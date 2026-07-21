@@ -51,8 +51,12 @@
 
 <script>
 // ========== 配置 ==========
-// 使用公共CORS代理（无需任何配置，直接可用）
-const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+// 多个备用CORS代理（按优先级排列）
+const PROXY_LIST = [
+    'https://api.allorigins.win/raw?url=',
+    'https://corsproxy.io/?url=',
+    'https://api.codetabs.com/v1/proxy?quest='
+];
 const TARGET_URL = 'https://trade.500.com/jczq/index.php?playid=312&g=2';
 
 // ========== 核心函数 ==========
@@ -65,137 +69,156 @@ async function fetchData() {
     cntEl.textContent = '-';
     timeEl.textContent = '请求中...';
 
-    try {
-        const fullUrl = PROXY_URL + encodeURIComponent(TARGET_URL);
-        const resp = await fetch(fullUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/537.36' }
-        });
+    let html = null;
+    let lastError = null;
 
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    // 依次尝试每个代理
+    for (const proxy of PROXY_LIST) {
+        try {
+            const fullUrl = proxy + encodeURIComponent(TARGET_URL);
+            const resp = await fetch(fullUrl, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/537.36' }
+            });
 
-        // 注意：代理返回的是UTF-8编码，但500网原页面是GBK，我们需要转码
-        const buffer = await resp.arrayBuffer();
-        // 使用TextDecoder解码GBK
-        const decoder = new TextDecoder('gbk');
-        const html = decoder.decode(buffer);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-        // 解析比赛
-        const matches = parse500Html(html);
-
-        if (matches.length === 0) {
-            listEl.innerHTML = '<div class="empty">📭 今日暂无竞彩赛事，或页面结构已更新</div>';
-            cntEl.textContent = '0';
-            timeEl.textContent = new Date().toLocaleTimeString();
-            return;
+            const buffer = await resp.arrayBuffer();
+            const decoder = new TextDecoder('gbk');
+            html = decoder.decode(buffer);
+            break; // 成功获取，跳出循环
+        } catch (err) {
+            lastError = err;
+            console.warn(`代理 ${proxy} 失败:`, err);
         }
-
-        cntEl.textContent = matches.length;
-        timeEl.textContent = new Date().toLocaleTimeString();
-
-        // 生成卡片
-        let htmlStr = '';
-        for (const m of matches) {
-            // 计算去水概率
-            const prob = calcProb(m.odds);
-            const direction = getDirection(prob);
-            const confidence = getConfidence(prob);
-            const goals = '2-3球';
-
-            htmlStr += `
-            <div class="match-card">
-                <div class="top">
-                    <span>${m.league || '未知联赛'}</span>
-                    <span>${m.time || ''}</span>
-                </div>
-                <div class="teams">${m.home} <span class="vs">vs</span> ${m.away}</div>
-                <div class="odds">
-                    <span class="win">主 ${m.odds[0]}</span>
-                    <span class="draw">平 ${m.odds[1]}</span>
-                    <span class="lose">客 ${m.odds[2]}</span>
-                </div>
-                <div class="prediction">
-                    <span class="dir">🎯 ${direction}</span>
-                    <span class="conf">${confidence}</span>
-                    <span class="goals">⚽ ${goals}</span>
-                </div>
-                <div class="prob-bar">
-                    <div class="b-home" style="width:${(prob.home*100).toFixed(1)}%;"></div>
-                    <div class="b-draw" style="width:${(prob.draw*100).toFixed(1)}%;"></div>
-                    <div class="b-away" style="width:${(prob.away*100).toFixed(1)}%;"></div>
-                </div>
-            </div>
-            `;
-        }
-        listEl.innerHTML = htmlStr;
-
-    } catch (err) {
-        listEl.innerHTML = `<div class="error">❌ 加载失败：${err.message}<br><br>💡 请检查网络，或稍后点击「刷新」重试</div>`;
-        timeEl.textContent = '错误';
     }
+
+    if (!html) {
+        listEl.innerHTML = `<div class="error">❌ 所有代理均加载失败：${lastError ? lastError.message : '未知错误'}<br><br>💡 请检查网络，或点击「刷新」重试</div>`;
+        timeEl.textContent = '错误';
+        return;
+    }
+
+    // 解析HTML
+    const matches = parse500Html(html);
+
+    if (matches.length === 0) {
+        listEl.innerHTML = '<div class="empty">📭 今日暂无竞彩赛事，或页面结构已更新<br>💡 可尝试点击「刷新」或稍后再试</div>';
+        cntEl.textContent = '0';
+        timeEl.textContent = new Date().toLocaleTimeString();
+        return;
+    }
+
+    cntEl.textContent = matches.length;
+    timeEl.textContent = new Date().toLocaleTimeString();
+
+    // 生成卡片
+    let htmlStr = '';
+    for (const m of matches) {
+        const prob = calcProb(m.odds);
+        const direction = getDirection(prob);
+        const confidence = getConfidence(prob);
+        const goals = '2-3球';
+
+        htmlStr += `
+        <div class="match-card">
+            <div class="top">
+                <span>${m.league || '未知联赛'}</span>
+                <span>${m.time || ''}</span>
+            </div>
+            <div class="teams">${m.home} <span class="vs">vs</span> ${m.away}</div>
+            <div class="odds">
+                <span class="win">主 ${m.odds[0]}</span>
+                <span class="draw">平 ${m.odds[1]}</span>
+                <span class="lose">客 ${m.odds[2]}</span>
+            </div>
+            <div class="prediction">
+                <span class="dir">🎯 ${direction}</span>
+                <span class="conf">${confidence}</span>
+                <span class="goals">⚽ ${goals}</span>
+            </div>
+            <div class="prob-bar">
+                <div class="b-home" style="width:${(prob.home*100).toFixed(1)}%;"></div>
+                <div class="b-draw" style="width:${(prob.draw*100).toFixed(1)}%;"></div>
+                <div class="b-away" style="width:${(prob.away*100).toFixed(1)}%;"></div>
+            </div>
+        </div>
+        `;
+    }
+    listEl.innerHTML = htmlStr;
 }
 
-// ========== 解析500网HTML ==========
+// ========== 解析500网HTML（支持多结构） ==========
 function parse500Html(html) {
     const matches = [];
-    // 用正则匹配 tr.bet-tb-tr 行
-    const trPattern = /<tr[^>]*class="[^"]*bet-tb-tr[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi;
-    let trMatch;
-    while ((trMatch = trPattern.exec(html)) !== null) {
-        const trContent = trMatch[1];
-        // 提取各td
-        const tdPattern = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-        const tds = [];
-        let tdMatch;
-        while ((tdMatch = tdPattern.exec(trContent)) !== null) {
-            tds.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
-        }
-        if (tds.length < 6) continue;
+    // 尝试多种匹配模式
+    const patterns = [
+        // 标准模式：tr class="bet-tb-tr"
+        /<tr[^>]*class="[^"]*bet-tb-tr[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi,
+        // 备选模式：tr 包含 bet-tb 类
+        /<tr[^>]*class="[^"]*bet-tb[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi
+    ];
 
-        const matchId = tds[0] || '';
-        const league = tds[1] || '';
-        const time = tds[2] || '';
-        // 主客队通常在tds[4]或tds[3]
-        let teamText = '';
-        if (tds.length > 4) teamText = tds[4];
-        else if (tds.length > 3) teamText = tds[3];
-        const teams = parseTeams(teamText);
+    let found = false;
+    for (const pattern of patterns) {
+        let trMatch;
+        while ((trMatch = pattern.exec(html)) !== null) {
+            const trContent = trMatch[1];
+            const tds = extractTds(trContent);
+            if (tds.length < 6) continue;
 
-        // 赔率在后面的td中的span里
-        let odds = ['-', '-', '-'];
-        for (let i = 3; i < tds.length; i++) {
-            const cell = tds[i];
-            if (cell.includes('span') && cell.match(/\d+\.\d+/)) {
-                const spans = cell.match(/<span[^>]*>([\d.]+)<\/span>/g);
-                if (spans && spans.length >= 3) {
-                    const nums = spans.map(s => s.replace(/<[^>]+>/g, '').trim());
-                    if (nums.length >= 3) {
-                        odds = nums.slice(0, 3);
-                        break;
+            const matchId = tds[0] || '';
+            const league = tds[1] || '';
+            const time = tds[2] || '';
+            let teamText = tds[4] || tds[3] || '';
+            const teams = parseTeams(teamText);
+
+            // 提取赔率
+            let odds = ['-', '-', '-'];
+            for (let i = 3; i < tds.length; i++) {
+                const cell = tds[i];
+                if (cell.includes('span') && cell.match(/\d+\.\d+/)) {
+                    const spans = cell.match(/<span[^>]*>([\d.]+)<\/span>/g);
+                    if (spans && spans.length >= 3) {
+                        const nums = spans.map(s => s.replace(/<[^>]+>/g, '').trim());
+                        if (nums.length >= 3) {
+                            odds = nums.slice(0, 3);
+                            break;
+                        }
                     }
                 }
             }
-        }
 
-        if (teams.home && teams.away && odds[0] !== '-') {
-            matches.push({
-                league: league,
-                time: time,
-                home: teams.home,
-                away: teams.away,
-                odds: odds.map(Number)
-            });
+            if (teams.home && teams.away && odds[0] !== '-') {
+                matches.push({
+                    league: league,
+                    time: time,
+                    home: teams.home,
+                    away: teams.away,
+                    odds: odds.map(Number)
+                });
+                found = true;
+            }
         }
+        if (found) break; // 如果找到数据，不再尝试后续模式
     }
     return matches;
 }
 
+function extractTds(trContent) {
+    const tds = [];
+    const tdPattern = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+    let tdMatch;
+    while ((tdMatch = tdPattern.exec(trContent)) !== null) {
+        tds.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+    }
+    return tds;
+}
+
 function parseTeams(text) {
-    // 尝试匹配 "主队 VS 客队" 或 "主队vs客队"
     const parts = text.split(/\s*[Vv][Ss]\s*/);
     if (parts.length === 2) {
         return { home: parts[0].trim(), away: parts[1].trim() };
     }
-    // 尝试匹配 "主队 - 客队"
     const parts2 = text.split(/\s*[-–]\s*/);
     if (parts2.length === 2) {
         return { home: parts2[0].trim(), away: parts2[1].trim() };
