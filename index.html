@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>⚽ 竞彩足球预测</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e17;color:#e8edf5;padding:16px;min-height:100vh;}
+        .header{display:flex;justify-content:space-between;align-items:center;padding:12px 0 20px;border-bottom:1px solid #1a2744;}
+        .header h1{font-size:20px;background:linear-gradient(135deg,#f7931e,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+        .badge{font-size:12px;color:#8899bb;background:#111d33;padding:4px 12px;border-radius:20px;}
+        .stats{display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:13px;color:#8899bb;flex-wrap:wrap;gap:6px;}
+        .refresh-btn{background:#1a2744;border:none;color:#e8edf5;padding:6px 16px;border-radius:20px;font-size:13px;cursor:pointer;}
+        .refresh-btn:active{background:#2a3a5a;}
+        .match-card{background:#111d33;border-radius:12px;padding:16px;margin-bottom:12px;border-left:3px solid #2a4a7a;}
+        .top{display:flex;justify-content:space-between;font-size:12px;color:#8899bb;margin-bottom:8px;}
+        .teams{font-size:16px;font-weight:600;margin-bottom:8px;}
+        .vs{color:#8899bb;margin:0 6px;}
+        .odds{display:flex;gap:16px;font-size:14px;margin-bottom:10px;flex-wrap:wrap;}
+        .win{color:#4caf50;}.draw{color:#ffc107;}.lose{color:#f44336;}
+        .prediction{background:#0a1628;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+        .dir{font-size:15px;font-weight:600;}
+        .conf{color:#ffd700;}.goals{color:#64b5f6;}
+        .prob-bar{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-top:8px;background:#1a2744;}
+        .b-home{background:#4caf50;}.b-draw{background:#ffc107;}.b-away{background:#f44336;}
+        .loading,.error,.empty{text-align:center;padding:40px 0;color:#8899bb;}
+        .error{color:#f44336;}
+        .footer{text-align:center;padding:20px 0 10px;font-size:12px;color:#445566;}
+        .hint{background:#1a2744;border-radius:8px;padding:12px;margin-bottom:16px;font-size:13px;color:#8899bb;border-left:3px solid #f7931e;}
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⚽ 竞彩预测</h1>
+    <span class="badge">500彩票网</span>
+</div>
+
+<div class="stats">
+    <span>📊 比赛 <strong id="cnt">-</strong></span>
+    <span id="time">加载中...</span>
+    <button class="refresh-btn" onclick="fetchData()">🔄 刷新</button>
+</div>
+
+<div id="list">
+    <div class="loading">⏳ 正在加载数据...</div>
+</div>
+
+<div class="footer">数据来源：500彩票网 · 通过CORS代理获取 · 仅供研究参考</div>
+
+<script>
+// ========== 配置 ==========
+// 使用公共CORS代理（无需任何配置，直接可用）
+const PROXY_URL = 'https://api.allorigins.win/raw?url=';
+const TARGET_URL = 'https://trade.500.com/jczq/index.php?playid=312&g=2';
+
+// ========== 核心函数 ==========
+async function fetchData() {
+    const listEl = document.getElementById('list');
+    const cntEl = document.getElementById('cnt');
+    const timeEl = document.getElementById('time');
+
+    listEl.innerHTML = '<div class="loading">⏳ 正在获取数据...</div>';
+    cntEl.textContent = '-';
+    timeEl.textContent = '请求中...';
+
+    try {
+        const fullUrl = PROXY_URL + encodeURIComponent(TARGET_URL);
+        const resp = await fetch(fullUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/537.36' }
+        });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        // 注意：代理返回的是UTF-8编码，但500网原页面是GBK，我们需要转码
+        const buffer = await resp.arrayBuffer();
+        // 使用TextDecoder解码GBK
+        const decoder = new TextDecoder('gbk');
+        const html = decoder.decode(buffer);
+
+        // 解析比赛
+        const matches = parse500Html(html);
+
+        if (matches.length === 0) {
+            listEl.innerHTML = '<div class="empty">📭 今日暂无竞彩赛事，或页面结构已更新</div>';
+            cntEl.textContent = '0';
+            timeEl.textContent = new Date().toLocaleTimeString();
+            return;
+        }
+
+        cntEl.textContent = matches.length;
+        timeEl.textContent = new Date().toLocaleTimeString();
+
+        // 生成卡片
+        let htmlStr = '';
+        for (const m of matches) {
+            // 计算去水概率
+            const prob = calcProb(m.odds);
+            const direction = getDirection(prob);
+            const confidence = getConfidence(prob);
+            const goals = '2-3球';
+
+            htmlStr += `
+            <div class="match-card">
+                <div class="top">
+                    <span>${m.league || '未知联赛'}</span>
+                    <span>${m.time || ''}</span>
+                </div>
+                <div class="teams">${m.home} <span class="vs">vs</span> ${m.away}</div>
+                <div class="odds">
+                    <span class="win">主 ${m.odds[0]}</span>
+                    <span class="draw">平 ${m.odds[1]}</span>
+                    <span class="lose">客 ${m.odds[2]}</span>
+                </div>
+                <div class="prediction">
+                    <span class="dir">🎯 ${direction}</span>
+                    <span class="conf">${confidence}</span>
+                    <span class="goals">⚽ ${goals}</span>
+                </div>
+                <div class="prob-bar">
+                    <div class="b-home" style="width:${(prob.home*100).toFixed(1)}%;"></div>
+                    <div class="b-draw" style="width:${(prob.draw*100).toFixed(1)}%;"></div>
+                    <div class="b-away" style="width:${(prob.away*100).toFixed(1)}%;"></div>
+                </div>
+            </div>
+            `;
+        }
+        listEl.innerHTML = htmlStr;
+
+    } catch (err) {
+        listEl.innerHTML = `<div class="error">❌ 加载失败：${err.message}<br><br>💡 请检查网络，或稍后点击「刷新」重试</div>`;
+        timeEl.textContent = '错误';
+    }
+}
+
+// ========== 解析500网HTML ==========
+function parse500Html(html) {
+    const matches = [];
+    // 用正则匹配 tr.bet-tb-tr 行
+    const trPattern = /<tr[^>]*class="[^"]*bet-tb-tr[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch;
+    while ((trMatch = trPattern.exec(html)) !== null) {
+        const trContent = trMatch[1];
+        // 提取各td
+        const tdPattern = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        const tds = [];
+        let tdMatch;
+        while ((tdMatch = tdPattern.exec(trContent)) !== null) {
+            tds.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+        }
+        if (tds.length < 6) continue;
+
+        const matchId = tds[0] || '';
+        const league = tds[1] || '';
+        const time = tds[2] || '';
+        // 主客队通常在tds[4]或tds[3]
+        let teamText = '';
+        if (tds.length > 4) teamText = tds[4];
+        else if (tds.length > 3) teamText = tds[3];
+        const teams = parseTeams(teamText);
+
+        // 赔率在后面的td中的span里
+        let odds = ['-', '-', '-'];
+        for (let i = 3; i < tds.length; i++) {
+            const cell = tds[i];
+            if (cell.includes('span') && cell.match(/\d+\.\d+/)) {
+                const spans = cell.match(/<span[^>]*>([\d.]+)<\/span>/g);
+                if (spans && spans.length >= 3) {
+                    const nums = spans.map(s => s.replace(/<[^>]+>/g, '').trim());
+                    if (nums.length >= 3) {
+                        odds = nums.slice(0, 3);
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (teams.home && teams.away && odds[0] !== '-') {
+            matches.push({
+                league: league,
+                time: time,
+                home: teams.home,
+                away: teams.away,
+                odds: odds.map(Number)
+            });
+        }
+    }
+    return matches;
+}
+
+function parseTeams(text) {
+    // 尝试匹配 "主队 VS 客队" 或 "主队vs客队"
+    const parts = text.split(/\s*[Vv][Ss]\s*/);
+    if (parts.length === 2) {
+        return { home: parts[0].trim(), away: parts[1].trim() };
+    }
+    // 尝试匹配 "主队 - 客队"
+    const parts2 = text.split(/\s*[-–]\s*/);
+    if (parts2.length === 2) {
+        return { home: parts2[0].trim(), away: parts2[1].trim() };
+    }
+    return { home: text, away: '' };
+}
+
+// ========== 概率计算 ==========
+function calcProb(odds) {
+    const [h, d, a] = odds;
+    if (h <= 0 || d <= 0 || a <= 0) return { home: 0, draw: 0, away: 0 };
+    const ih = 1/h, id_ = 1/d, ia = 1/a;
+    const over = ih + id_ + ia;
+    if (over === 0) return { home: 0, draw: 0, away: 0 };
+    const vig = 1 / over;
+    return {
+        home: Math.round(ih * vig * 1000) / 1000,
+        draw: Math.round(id_ * vig * 1000) / 1000,
+        away: Math.round(ia * vig * 1000) / 1000
+    };
+}
+
+function getDirection(prob) {
+    if (prob.home > prob.away && prob.home > prob.draw) return `主胜 (${(prob.home*100).toFixed(1)}%)`;
+    if (prob.away > prob.home && prob.away > prob.draw) return `客胜 (${(prob.away*100).toFixed(1)}%)`;
+    return `平局 (${(prob.draw*100).toFixed(1)}%)`;
+}
+
+function getConfidence(prob) {
+    const m = Math.max(prob.home, prob.draw, prob.away);
+    if (m >= 0.45) return '★★★★★';
+    if (m >= 0.38) return '★★★★☆';
+    if (m >= 0.32) return '★★★☆☆';
+    if (m >= 0.28) return '★★☆☆☆';
+    return '★☆☆☆☆';
+}
+
+// ========== 自动刷新（首次加载 + 每5分钟） ==========
+fetchData();
+setInterval(fetchData, 300000);
+</script>
+
+</body>
+</html>
