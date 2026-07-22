@@ -1,19 +1,1049 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>China Quant Pilot V3.2</title><style>
-:root{--bg:#06101d;--panel:#0d1d31;--line:#28425f;--text:#eef5ff;--muted:#98acc5;--blue:#3cabff;--green:#2ed6a2;--red:#ff667d;--gold:#ffca62}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#05101d,#0b192c);color:var(--text);font:14px Arial,"Microsoft YaHei",sans-serif}header{display:flex;justify-content:space-between;padding:18px 24px;border-bottom:1px solid var(--line)}h1{margin:0}h1 b{color:var(--blue)}header p,.muted{color:var(--muted);margin:5px 0}.pill{display:inline-block;padding:7px 10px;border:1px solid var(--line);border-radius:20px;margin:3px}nav{position:sticky;top:0;z-index:3;display:flex;gap:6px;overflow:auto;padding:10px 20px;background:#071321ee}button{border:1px solid var(--line);border-radius:8px;background:#142a44;color:#fff;padding:8px 12px;cursor:pointer}.active,button:hover{border-color:var(--blue);background:#17436b}main{padding:18px 22px}.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:linear-gradient(145deg,#0c1b2e,#112640);border:1px solid var(--line);border-radius:12px;padding:15px}.hero{border:1px solid #3ad8a5;background:linear-gradient(145deg,#0b302b,#102a3b);box-shadow:0 0 22px #2ed6a222}.hero h3{margin:0 0 8px}.big{font-size:25px;font-weight:bold}.green{color:var(--green)}.red{color:var(--red)}.gold{color:var(--gold)}.notice{padding:12px;background:#18253b;border-left:3px solid var(--gold);margin:10px 0}.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:10px 0}input,select{background:#081624;color:white;border:1px solid var(--line);padding:8px;border-radius:7px}.tablewrap{overflow:auto;max-height:68vh}table{width:100%;border-collapse:collapse;background:#0a192a}th,td{padding:9px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:left}th{position:sticky;top:54px;background:#122840}.score{font-weight:bold;color:var(--green)}.tag{padding:4px 7px;border-radius:10px;background:#183951}.tag.a{background:#14523f;color:#8dffce}.tag.h{background:#533c14;color:#ffd98b}.tag.r{background:#4d1f2b;color:#ff9cab}.progress{height:7px;background:#1a3149;border-radius:5px;overflow:hidden}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--green))}@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}header{display:block}}@media(max-width:520px){.grid{grid-template-columns:1fr}main{padding:10px}}
-</style></head><body><header><div><h1>China Quant Pilot <b>V3.2</b></h1><p>击球区间 · 可介入性 · 风险收益比 · 自动刷新</p></div><div><span id="status" class="pill gold">连接中</span><span id="countdown" class="pill">--</span><span id="clock" class="pill"></span></div></header><nav id="nav"></nav><main id="app"></main><script>
-const tabs=['驾驶舱','A股击球区','ETF轮动','可转债雷达','模拟交易','数据诊断'];let cur=0,lastUpdate=null,timer=null,remaining=60;let cfg=JSON.parse(localStorage.getItem('cqp32cfg')||'{"on":true,"seconds":60}');let data={stocks:[],etfs:[],bonds:[]};let store=JSON.parse(localStorage.getItem('cqp32store')||'{"cash":100000,"positions":[]}');const $=s=>document.querySelector(s);
-function jsonp(url,timeout=15000){return new Promise((resolve,reject)=>{let cb='cqp_'+Date.now()+'_'+Math.random().toString(36).slice(2),s=document.createElement('script'),t=setTimeout(()=>done(new Error('请求超时')),timeout);function done(e,v){clearTimeout(t);delete window[cb];s.remove();e?reject(e):resolve(v)}window[cb]=v=>done(null,v);s.onerror=()=>done(new Error('数据源拒绝浏览器请求'));s.src=url.replace('{callback}',cb);document.head.appendChild(s)})}
-const EM='https://push2.eastmoney.com/api/qt/clist/get?cb={callback}&pn=1&pz=300&po=1&np=1&fltt=2&invt=2&fid=f6&fields=f12,f14,f2,f3,f4,f5,f6,f7,f8,f10,f15,f16,f17,f18,f22,f24,f25&fs=';
-function calc(x,type){let p=+x.f2||0,chg=+x.f3||0,turn=+x.f8||0,vr=+x.f10||0,speed=+x.f22||0,high=+x.f15||p,low=+x.f16||p,open=+x.f17||p,prev=+x.f18||p;let limit=(String(x.f12).startsWith('30')||String(x.f12).startsWith('68'))?20:10;let nearLimit=chg>=limit-0.5,overheat=nearLimit||chg>=7||speed>=1.5;let strength=Math.round(Math.max(0,Math.min(100,50+chg*3+Math.min(turn,15)*1.2+Math.min(vr,4)*5+speed*5)));let intradayRange=Math.max(high-low,p*.01),support=Math.max(low,p-intradayRange*.35),trigger=Math.max(p,high*.998);let stop=support-intradayRange*.25,risk=Math.max(p-stop,p*.015);let target1=p+risk*1.6,target2=p+risk*2.3,rr=(target1-p)/risk;let entry=Math.round(Math.max(0,Math.min(100,78-Math.abs(chg-2.8)*7-Math.max(0,speed-.7)*12+Math.min(vr,2)*5-Math.max(0,turn-12)*2)));let riskScore=Math.round(Math.max(0,Math.min(100,20+Math.max(0,chg-5)*10+Math.max(0,speed-1)*15+Math.max(0,turn-15)*2)));let inZone=p>=support&&p<=support+risk*.7&&!overheat&&entry>=72&&rr>=1.5;let nearZone=!inZone&&!overheat&&entry>=65&&p<support+risk*1.25;let status=nearLimit?'涨停/临近涨停，不追':overheat?'强势但过热':inZone?'进入击球区间':nearZone?'接近击球区间':'普通观察';let grade=nearLimit||overheat?'H':inZone?'A':nearZone?'B':riskScore>=70?'R':'C';let priority=Math.round(entry*.4+strength*.25+Math.min(rr/2.5*100,100)*.2+(100-riskScore)*.15-(overheat?50:0));return {代码:x.f12,名称:x.f14,现价:p,涨跌幅:chg,强度:strength,可介入:entry,风险:riskScore,风险收益比:+rr.toFixed(2),击球区间:`${support.toFixed(2)}-${(support+risk*.7).toFixed(2)}`,突破价:+trigger.toFixed(2),失效价:+stop.toFixed(2),目标一:`${target1.toFixed(2)}`,目标二:`${target2.toFixed(2)}`,状态:status,等级:grade,机会优先级:priority,类型:type,更新时间:new Date().toLocaleTimeString()}}
-function norm(j,type){return (j?.data?.diff||[]).map(x=>calc(x,type)).filter(x=>x.现价>0)}
-async function loadAll(manual=false){setStatus('更新中','gold');try{let [s,e,b]=await Promise.all([jsonp(EM+encodeURIComponent('m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23')),jsonp(EM+encodeURIComponent('b:MK0021,b:MK0022,b:MK0023,b:MK0024')),jsonp(EM+encodeURIComponent('b:MK0354'))]);data.stocks=norm(s,'股票').filter(x=>!String(x.名称).match(/ST|退/)).sort((a,b)=>b.机会优先级-a.机会优先级);data.etfs=norm(e,'ETF').sort((a,b)=>b.机会优先级-a.机会优先级);data.bonds=norm(b,'可转债').sort((a,b)=>b.机会优先级-a.机会优先级);lastUpdate=new Date();remaining=cfg.seconds;setStatus('行情已更新','green');render(cur)}catch(e){setStatus('连接失败','red');if(manual)alert('行情更新失败：'+e.message)}}
-function setStatus(t,c){$('#status').textContent=t;$('#status').className='pill '+c}function save(){localStorage.setItem('cqp32store',JSON.stringify(store));localStorage.setItem('cqp32cfg',JSON.stringify(cfg))}function fmt(v){if(typeof v==='number'&&Math.abs(v)>1e8)return(v/1e8).toFixed(2)+'亿';return v??'--'}
-function table(rows,action=true){if(!rows.length)return '<div class="notice">当前没有符合条件的标的。</div>';let keys=['等级','代码','名称','现价','涨跌幅','强度','可介入','风险','风险收益比','击球区间','突破价','失效价','目标一','状态'];return `<div class="tablewrap"><table><thead><tr>${keys.map(k=>`<th>${k}</th>`).join('')}${action?'<th>操作</th>':''}</tr></thead><tbody>${rows.map(r=>`<tr>${keys.map(k=>`<td class="${k==='可介入'?'score':''}">${k==='等级'?`<span class="tag ${r[k].toLowerCase()}">${r[k]}</span>`:fmt(r[k])}</td>`).join('')}${action?`<td><button onclick='buy(${JSON.stringify(r)})'>模拟买入</button></td>`:''}</tr>`).join('')}</tbody></table></div>`}
-function heroCards(rows){if(!rows.length)return '<div class="notice">目前没有同时满足“趋势、可介入性、风险收益比与不过热”条件的强烈推荐。空仓等待也是策略的一部分。</div>';return `<div class="grid">${rows.slice(0,5).map(r=>`<div class="card hero"><h3><span class="tag a">A级</span> ${r.名称}</h3><div class="big green">${r.现价}</div><p>击球区间：<b>${r.击球区间}</b></p><p>失效价：<span class="red">${r.失效价}</span>　目标：${r.目标一}</p><p>强度 ${r.强度}｜可介入 ${r.可介入}｜风险 ${r.风险}</p><p>风险收益比 ${r.风险收益比}｜优先级 ${r.机会优先级}</p><div class="progress"><i style="width:${r.机会优先级}%"></i></div><p class="muted">条件满足后仍需人工确认量价与板块同步。</p><button onclick='buy(${JSON.stringify(r)})'>模拟买入</button></div>`).join('')}</div>`}
-function nav(){$('#nav').innerHTML=tabs.map((x,i)=>`<button onclick="render(${i})">${x}</button>`).join('')}function render(i=0){cur=i;[...document.querySelectorAll('nav button')].forEach((b,n)=>b.classList.toggle('active',n===i));let a=$('#app'),strong=data.stocks.filter(x=>x.等级==='A'&&x.机会优先级>=70),near=data.stocks.filter(x=>x.等级==='B'),hot=data.stocks.filter(x=>x.等级==='H');if(i===0)a.innerHTML=`<h2>交易驾驶舱</h2><div class="grid"><div class="card"><div class="muted">进入击球区</div><div class="big green">${strong.length}</div></div><div class="card"><div class="muted">接近击球区</div><div class="big">${near.length}</div></div><div class="card"><div class="muted">强势过热</div><div class="big gold">${hot.length}</div></div><div class="card"><div class="muted">模拟现金</div><div class="big">¥${store.cash.toFixed(0)}</div></div></div><h2>强烈推荐｜已进入击球区间</h2>${heroCards(strong)}<div class="notice">强烈推荐表示策略条件匹配度较高，不是保证上涨。涨停及临近涨停股票不会进入此区域。</div>`;if(i===1)a.innerHTML=`<h2>A股击球区</h2>${controls()}<h2>① 强烈推荐｜已进入击球区间</h2>${heroCards(strong)}<h2>② 接近击球区间</h2>${table(near.slice(0,40))}<h2>③ 强势但过热｜当日不追</h2>${table(hot.slice(0,40),false)}<h2>④ 普通观察</h2>${table(data.stocks.filter(x=>x.等级==='C').slice(0,50))}`;if(i===2)a.innerHTML='<h2>ETF轮动</h2>'+controls()+table(data.etfs.slice(0,80));if(i===3)a.innerHTML='<h2>可转债雷达</h2>'+controls()+'<div class="notice">转债点位仅按盘中波动估算，交易前必须核查强赎、最后交易日、剩余规模及溢价率。</div>'+table(data.bonds.slice(0,80));if(i===4)a.innerHTML=positions();if(i===5)a.innerHTML=diagnostic()}
-function controls(){return `<div class="toolbar"><button onclick="loadAll(true)">立即刷新</button><label><input type="checkbox" ${cfg.on?'checked':''} onchange="cfg.on=this.checked;save()"> 自动刷新</label><select onchange="cfg.seconds=+this.value;remaining=cfg.seconds;save()"><option value="30" ${cfg.seconds===30?'selected':''}>30秒</option><option value="60" ${cfg.seconds===60?'selected':''}>60秒</option><option value="120" ${cfg.seconds===120?'selected':''}>2分钟</option><option value="300" ${cfg.seconds===300?'selected':''}>5分钟</option></select><span class="pill">最后更新：${lastUpdate?lastUpdate.toLocaleTimeString():'--'}</span></div>`}
-function buy(r){if(r.等级==='H')return alert('该标的处于过热/涨停观察状态，策略不建议追涨。');let q=+(prompt(`模拟买入 ${r.名称}\n现价 ${r.现价}\n击球区间 ${r.击球区间}\n失效价 ${r.失效价}\n请输入数量`,100)||0);if(!q)return;let cost=r.现价*q;if(cost>store.cash)return alert('模拟现金不足');store.cash-=cost;store.positions.push({代码:r.代码,名称:r.名称,成本价:r.现价,数量:q,失效价:r.失效价,目标:r.目标一,时间:new Date().toLocaleString()});save();alert('已记录模拟买入')}
-function positions(){return `<h2>模拟交易</h2><div class="card"><div class="muted">可用现金</div><div class="big">¥${store.cash.toFixed(2)}</div></div>${store.positions.length?`<div class="tablewrap"><table><tr><th>代码</th><th>名称</th><th>成本</th><th>数量</th><th>失效价</th><th>目标</th><th>时间</th></tr>${store.positions.map(x=>`<tr>${Object.values(x).map(v=>`<td>${v}</td>`).join('')}</tr>`).join('')}</table></div>`:'<div class="notice">暂无模拟持仓。</div>'}`}
-function diagnostic(){return `<h2>数据诊断</h2>${controls()}<div class="card"><p>运行方式：纯HTML网页</p><p>安装Python：不需要</p><p>云端部署：不需要</p><p>接口模式：浏览器JSONP直连公开行情页</p><p>最后成功更新：${lastUpdate?lastUpdate.toLocaleString():'暂无'}</p><p>A股/ETF/转债：${data.stocks.length}/${data.etfs.length}/${data.bonds.length}</p></div><div class="notice">点位基于当前快照和当日高低波动估算，缺少完整日线数据库时只能作为初筛。若上游停止JSONP，纯网页无法绕过限制。</div>`}
-setInterval(()=>{$('#clock').textContent=new Date().toLocaleString();if(cfg.on){remaining--;if(remaining<=0){remaining=cfg.seconds;loadAll()}$('#countdown').textContent='下次刷新 '+remaining+'秒'}else $('#countdown').textContent='自动刷新已关闭'},1000);nav();render();loadAll();
-</script></body></html>
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>⚽ 智能双层预测系统 v4.0</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box;}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e17;color:#e8edf5;padding:12px;min-height:100vh;}
+        .header{display:flex;justify-content:space-between;align-items:center;padding:10px 0 16px;border-bottom:1px solid #1a2744;flex-wrap:wrap;gap:8px;}
+        .header h1{font-size:18px;background:linear-gradient(135deg,#f7931e,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+        .badge{font-size:9px;color:#8899bb;background:#111d33;padding:3px 8px;border-radius:12px;}
+        .tabs{display:flex;gap:4px;padding:10px 0;overflow-x:auto;flex-wrap:nowrap;}
+        .tab{flex:0 0 auto;padding:6px 14px;text-align:center;background:#111d33;border-radius:8px;font-size:12px;color:#8899bb;cursor:pointer;border:none;transition:all 0.2s;}
+        .tab.active{background:#1a2744;color:#f7931e;font-weight:600;}
+        .stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin:6px 0 10px;}
+        .stat-card{background:#111d33;border-radius:8px;padding:8px;text-align:center;}
+        .stat-card .num{font-size:16px;font-weight:700;color:#f7931e;}
+        .stat-card .label{font-size:9px;color:#8899bb;}
+        .stat-card .num.green{color:#4caf50;}
+        .stat-card .num.red{color:#f44336;}
+        .stat-card .num.blue{color:#64b5f6;}
+        
+        .match-card{background:#111d33;border-radius:10px;padding:12px;margin-bottom:10px;border-left:3px solid #2a4a7a;}
+        .match-card .top{display:flex;justify-content:space-between;font-size:11px;color:#8899bb;flex-wrap:wrap;gap:4px;}
+        .match-card .teams{font-size:15px;font-weight:600;margin:4px 0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+        .match-card .teams .vs{color:#8899bb;font-weight:400;}
+        .match-card .odds{display:flex;gap:12px;font-size:13px;margin:4px 0;flex-wrap:wrap;}
+        .match-card .odds .win{color:#4caf50;}
+        .match-card .odds .draw{color:#ffc107;}
+        .match-card .odds .lose{color:#f44336;}
+        
+        /* 预测输出 */
+        .prediction-box{background:#0a1628;border-radius:8px;padding:10px;margin:6px 0;border:1px solid #1a2744;}
+        .prediction-box .row{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:12px;padding:2px 0;}
+        .prediction-box .label{color:#8899bb;}
+        .prediction-box .value{font-weight:600;}
+        .prediction-box .value.gold{color:#ffd700;}
+        .prediction-box .value.green{color:#4caf50;}
+        .prediction-box .value.red{color:#f44336;}
+        .prediction-box .value.blue{color:#64b5f6;}
+        
+        .grade-A{background:#1a3a2a;color:#4caf50;padding:2px 10px;border-radius:12px;font-size:12px;}
+        .grade-B{background:#3a3a1a;color:#ffc107;padding:2px 10px;border-radius:12px;font-size:12px;}
+        .grade-C{background:#3a1a1a;color:#f44336;padding:2px 10px;border-radius:12px;font-size:12px;}
+        
+        .match-card .actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+        .match-card .actions button{background:#1a2744;border:none;color:#e8edf5;padding:4px 10px;border-radius:14px;font-size:11px;cursor:pointer;}
+        .match-card .actions button.track{background:#2a4a3a;color:#4caf50;}
+        .match-card .actions button.track.active{background:#4a2a2a;color:#f44336;}
+        
+        .filters{display:flex;gap:6px;padding:6px 0;flex-wrap:wrap;}
+        .filters input,.filters select{background:#111d33;border:1px solid #1a2744;color:#e8edf5;padding:5px 10px;border-radius:14px;font-size:12px;flex:1;min-width:70px;}
+        
+        .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:1000;padding:16px;justify-content:center;align-items:center;}
+        .modal.show{display:flex;}
+        .modal-content{background:#111d33;border-radius:12px;padding:16px;max-width:420px;width:100%;max-height:85vh;overflow-y:auto;}
+        .modal-content h3{margin-bottom:10px;color:#f7931e;font-size:16px;}
+        .modal-content label{font-size:12px;color:#8899bb;display:block;margin:6px 0 2px;}
+        .modal-content input,.modal-content select,.modal-content textarea{width:100%;padding:6px 10px;border-radius:6px;border:1px solid #1a2744;background:#0a1628;color:#e8edf5;font-size:13px;}
+        .modal-content textarea{height:40px;resize:vertical;}
+        .modal-content .btn-group{display:flex;gap:8px;margin-top:12px;}
+        .modal-content .btn-group button{flex:1;padding:8px;border:none;border-radius:6px;font-size:13px;cursor:pointer;}
+        .modal-content .btn-group .btn-confirm{background:#f7931e;color:#0a0e17;font-weight:600;}
+        .modal-content .btn-group .btn-cancel{background:#1a2744;color:#8899bb;}
+        
+        .loading,.empty{text-align:center;padding:30px 0;color:#8899bb;font-size:13px;}
+        .footer{text-align:center;padding:12px 0 6px;font-size:10px;color:#445566;}
+        .clear-btn{background:#3a1a1a;border:none;color:#f44336;padding:3px 10px;border-radius:14px;font-size:10px;cursor:pointer;}
+        
+        .factor-tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:9px;margin:1px;background:#1a2744;color:#64b5f6;}
+        .factor-tag.danger{background:#3a1a1a;color:#f44336;}
+        .factor-tag.warn{background:#3a3a1a;color:#ffc107;}
+        
+        .progress-bar{height:3px;border-radius:2px;background:#1a2744;margin-top:4px;overflow:hidden;}
+        .progress-bar .fill{height:100%;border-radius:2px;background:linear-gradient(90deg,#f7931e,#ffd700);transition:width 0.5s;}
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>⚽ 双层预测系统</h1>
+    <span class="badge">v4.0 · 自学习</span>
+</div>
+
+<div class="tabs">
+    <button class="tab active" data-tab="matches">📋 赛事</button>
+    <button class="tab" data-tab="track">📌 追踪 (<span id="trackCountBadge">0</span>)</button>
+    <button class="tab" data-tab="results">📊 复盘</button>
+    <button class="tab" data-tab="stats">💰 盈利</button>
+    <button class="tab" data-tab="learn">🧠 学习</button>
+</div>
+
+<!-- 统计摘要 -->
+<div id="statsSummary" class="stats-grid" style="display:none;">
+    <div class="stat-card"><div class="num" id="sTotal">0</div><div class="label">总场次</div></div>
+    <div class="stat-card"><div class="num green" id="sHit">0</div><div class="label">命中</div></div>
+    <div class="stat-card"><div class="num red" id="sMiss">0</div><div class="label">未中</div></div>
+    <div class="stat-card"><div class="num blue" id="sRate">0%</div><div class="label">命中率</div></div>
+</div>
+
+<!-- 赛事页 -->
+<div id="pageMatches" class="page">
+    <div class="filters">
+        <input type="text" id="filterLeague" placeholder="🔍 筛选" oninput="renderMatches()">
+        <select id="filterStatus" onchange="renderMatches()">
+            <option value="all">全部</option>
+            <option value="scheduled">未开始</option>
+            <option value="finished">已完赛</option>
+        </select>
+        <button onclick="fetchData()" style="background:#1a2744;border:none;color:#e8edf5;padding:5px 14px;border-radius:14px;font-size:12px;cursor:pointer;">🔄 刷新</button>
+    </div>
+    <div id="matchList"><div class="loading">⏳ 加载中...</div></div>
+</div>
+
+<!-- 追踪页 -->
+<div id="pageTrack" class="page" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;flex-wrap:wrap;gap:4px;">
+        <span style="color:#8899bb;font-size:12px;">📌 追踪 <strong id="trackCount">0</strong> 场</span>
+        <button class="clear-btn" onclick="clearAllTrack()">清空</button>
+    </div>
+    <div id="trackList"><div class="empty">暂无追踪</div></div>
+</div>
+
+<!-- 复盘页 -->
+<div id="pageResults" class="page" style="display:none;">
+    <div style="padding:6px 0;font-size:12px;color:#8899bb;">📊 历史预测复盘</div>
+    <div id="resultsList"><div class="empty">暂无完赛记录</div></div>
+</div>
+
+<!-- 盈利页 -->
+<div id="pageStats" class="page" style="display:none;">
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="stat-card"><div class="num" id="pTotal">0</div><div class="label">总投入</div></div>
+        <div class="stat-card"><div class="num green" id="pReturn">0</div><div class="label">总回报</div></div>
+        <div class="stat-card"><div class="num" id="pProfit">0</div><div class="label">净盈亏</div></div>
+        <div class="stat-card"><div class="num" id="pRate">0%</div><div class="label">命中率</div></div>
+    </div>
+    <div id="betList"></div>
+</div>
+
+<!-- 学习页 -->
+<div id="pageLearn" class="page" style="display:none;">
+    <div style="padding:6px 0;font-size:12px;color:#8899bb;">🧠 模型自我学习 · 基于历史偏差自动调参</div>
+    <div id="learnPanel" style="margin-top:8px;"></div>
+</div>
+
+<div class="footer">数据：The Odds API · 本地存储 · 自学习进化</div>
+
+<!-- ===== 弹窗：手动录入 ===== -->
+<div class="modal" id="dataModal">
+    <div class="modal-content">
+        <h3>📝 录入基础数据</h3>
+        <div id="modalMatchInfo" style="font-size:13px;color:#8899bb;margin-bottom:6px;"></div>
+        
+        <label>主队近5场进球</label>
+        <input type="number" id="fHomeGoals" value="1.6" step="0.1">
+        <label>主队近5场失球</label>
+        <input type="number" id="fHomeConceded" value="1.2" step="0.1">
+        <label>客队近5场进球</label>
+        <input type="number" id="fAwayGoals" value="1.4" step="0.1">
+        <label>客队近5场失球</label>
+        <input type="number" id="fAwayConceded" value="1.3" step="0.1">
+        
+        <label>历史交锋（近5场主队战绩：胜/平/负）</label>
+        <input type="text" id="fH2H" placeholder="如：2胜2平1负" value="2胜1平2负">
+        
+        <label>关键事件（伤停/换帅等）</label>
+        <textarea id="fEvents" placeholder="如：主队头号射手伤缺"></textarea>
+        
+        <div class="btn-group">
+            <button class="btn-cancel" onclick="closeModal()">取消</button>
+            <button class="btn-confirm" onclick="saveManualData()">💾 保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 弹窗：复盘录入 ===== -->
+<div class="modal" id="resultModal">
+    <div class="modal-content">
+        <h3>📊 录入赛果</h3>
+        <div id="resultMatchInfo" style="font-size:13px;color:#8899bb;margin-bottom:6px;"></div>
+        <label>实际结果</label>
+        <select id="actualResult">
+            <option value="home">主胜</option>
+            <option value="draw">平局</option>
+            <option value="away">客胜</option>
+        </select>
+        <label>实际比分</label>
+        <input type="text" id="actualScore" placeholder="如: 2-1" value="1-0">
+        <div class="btn-group">
+            <button class="btn-cancel" onclick="closeResultModal()">取消</button>
+            <button class="btn-confirm" onclick="saveResult()">💾 保存复盘</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ===================================================================
+// 1. 核心配置
+// ===================================================================
+const API_KEY = 'f74ecb2f05a3b0263522a21119a9635a';
+let allMatches = [];
+let trackedBets = [];
+let modelParams = {};
+let currentTrackMatch = null;
+let currentResultMatchId = null;
+
+// ===================================================================
+// 2. 数据存储
+// ===================================================================
+function loadData() {
+    try {
+        const data = localStorage.getItem('fb_v4_data');
+        if (data) {
+            const parsed = JSON.parse(data);
+            trackedBets = parsed.trackedBets || [];
+            modelParams = parsed.modelParams || getDefaultParams();
+        } else {
+            modelParams = getDefaultParams();
+        }
+    } catch(e) { trackedBets = []; modelParams = getDefaultParams(); }
+}
+
+function saveData() {
+    try {
+        localStorage.setItem('fb_v4_data', JSON.stringify({
+            trackedBets: trackedBets,
+            modelParams: modelParams
+        }));
+    } catch(e) {}
+}
+
+function getDefaultParams() {
+    return {
+        // 市场模型权重
+        weight_market: 0.30,
+        weight_poisson: 0.20,
+        weight_form: 0.15,
+        weight_h2h: 0.10,
+        weight_injury: 0.10,
+        weight_odds_velocity: 0.10,
+        weight_euro_asia: 0.05,
+        // 泊松参数
+        home_advantage: 1.25,
+        league_avg_goals: 1.35,
+        // 学习参数
+        learning_rate: 0.02,
+        total_predictions: 0,
+        total_hits: 0
+    };
+}
+
+// ===================================================================
+// 3. 预测引擎
+// ===================================================================
+
+// 3.1 去水概率
+function calcProb(h, d, a) {
+    if (h <= 0 || a <= 0) return { home: 0, draw: 0, away: 0 };
+    const ih = 1/h, id = d > 0 ? 1/d : 0, ia = 1/a;
+    const over = ih + id + ia;
+    if (over === 0) return { home: 0, draw: 0, away: 0 };
+    const vig = 1 / over;
+    return {
+        home: Math.round(ih * vig * 1000) / 1000,
+        draw: Math.round(id * vig * 1000) / 1000,
+        away: Math.round(ia * vig * 1000) / 1000
+    };
+}
+
+// 3.2 市场离散度
+function calcDispersion(odds) {
+    // odds: [{home, draw, away}] 多公司赔率
+    if (!odds || odds.length < 2) return { home: 0, draw: 0, away: 0 };
+    const n = odds.length;
+    const avg = { home: 0, draw: 0, away: 0 };
+    for (const o of odds) {
+        avg.home += o.home / n;
+        avg.draw += o.draw / n;
+        avg.away += o.away / n;
+    }
+    let varHome = 0, varDraw = 0, varAway = 0;
+    for (const o of odds) {
+        varHome += Math.pow(o.home - avg.home, 2) / n;
+        varDraw += Math.pow(o.draw - avg.draw, 2) / n;
+        varAway += Math.pow(o.away - avg.away, 2) / n;
+    }
+    const stdHome = Math.sqrt(varHome);
+    const stdDraw = Math.sqrt(varDraw);
+    const stdAway = Math.sqrt(varAway);
+    // 离散度归一化：标准差/平均值 * 100
+    const dispHome = avg.home > 0 ? (stdHome / avg.home) * 100 : 0;
+    const dispDraw = avg.draw > 0 ? (stdDraw / avg.draw) * 100 : 0;
+    const dispAway = avg.away > 0 ? (stdAway / avg.away) * 100 : 0;
+    return { home: dispHome, draw: dispDraw, away: dispAway, avg: avg };
+}
+
+// 3.3 泊松进球模型
+function poissonGoals(lambda, maxGoals) {
+    // 计算泊松分布
+    const probs = [];
+    const e = Math.exp(-lambda);
+    for (let k = 0; k <= maxGoals; k++) {
+        let p = e;
+        for (let i = 1; i <= k; i++) {
+            p *= (lambda / i);
+        }
+        probs.push(p);
+    }
+    return probs;
+}
+
+function calcExpectedGoals(homeAttack, homeDefense, awayAttack, awayDefense, homeAdvantage, leagueAvg) {
+    const homeXG = homeAttack * awayDefense * homeAdvantage * leagueAvg / 1.35;
+    const awayXG = awayAttack * homeDefense * leagueAvg / 1.35;
+    return { home: homeXG, away: awayXG };
+}
+
+// 3.4 比分矩阵
+function calcScoreMatrix(lambdaHome, lambdaAway, maxGoals) {
+    const homeProbs = poissonGoals(lambdaHome, maxGoals);
+    const awayProbs = poissonGoals(lambdaAway, maxGoals);
+    const matrix = [];
+    for (let i = 0; i <= maxGoals; i++) {
+        for (let j = 0; j <= maxGoals; j++) {
+            matrix.push({
+                home: i,
+                away: j,
+                prob: homeProbs[i] * awayProbs[j]
+            });
+        }
+    }
+    return matrix;
+}
+
+// 3.5 大小球概率
+function calcOverUnder(matrix, threshold) {
+    let over = 0, under = 0;
+    for (const m of matrix) {
+        const total = m.home + m.away;
+        if (total > threshold) over += m.prob;
+        else under += m.prob;
+    }
+    return { over: over, under: under };
+}
+
+// 3.6 双方进球概率
+function calcBothScore(matrix) {
+    let both = 0, notBoth = 0;
+    for (const m of matrix) {
+        if (m.home > 0 && m.away > 0) both += m.prob;
+        else notBoth += m.prob;
+    }
+    return { both: both, notBoth: notBoth };
+}
+
+// 3.7 欧亚一致性检测
+function checkEuroAsia(euroHome, asianHandicap) {
+    // 欧赔主胜 1.80-2.00 区间对应亚盘 0.5球
+    if (euroHome >= 1.70 && euroHome <= 2.10) {
+        const theoretical = 0.5;
+        const diff = Math.abs(asianHandicap - theoretical);
+        if (diff < 0.1) return { consistent: true, signal: '欧亚一致' };
+        else if (asianHandicap < theoretical) return { consistent: false, signal: '浅盘诱下' };
+        else return { consistent: false, signal: '深盘诱上' };
+    }
+    return { consistent: true, signal: '区间外' };
+}
+
+// 3.8 赔率变化速度
+function calcOddsVelocity(prev, curr, timeDiff) {
+    if (!prev || !curr || timeDiff === 0) return { home: 0, draw: 0, away: 0 };
+    return {
+        home: (prev.home - curr.home) / timeDiff,
+        draw: (prev.draw - curr.draw) / timeDiff,
+        away: (prev.away - curr.away) / timeDiff
+    };
+}
+
+// ===================================================================
+// 4. 综合预测
+// ===================================================================
+function predictMatch(matchData, manualData) {
+    // matchData: { home, away, odds: { home, draw, away }, bookmakers }
+    // manualData: { homeGoals, homeConceded, awayGoals, awayConceded, h2h, events }
+    
+    const odds = matchData.odds;
+    const prob = calcProb(odds.home, odds.draw, odds.away);
+    
+    // === 第一层：市场模型 ===
+    // 去水概率
+    const marketProb = prob;
+    // 市场离散度（如果有多个bookmaker）
+    let dispersion = { home: 0, draw: 0, away: 0 };
+    if (matchData.bookmakers && matchData.bookmakers.length > 1) {
+        const oddsList = matchData.bookmakers.map(b => {
+            const mk = b.markets.find(m => m.key === 'h2h');
+            if (!mk) return null;
+            const outcomes = mk.outcomes;
+            const h = outcomes.find(o => o.name === matchData.home)?.price || 0;
+            const d = outcomes.find(o => o.name === 'Draw')?.price || 0;
+            const a = outcomes.find(o => o.name === matchData.away)?.price || 0;
+            return { home: h, draw: d, away: a };
+        }).filter(o => o && o.home > 0);
+        if (oddsList.length > 1) {
+            dispersion = calcDispersion(oddsList);
+        }
+    }
+    
+    // 数据完整度评分
+    let completeness = 0;
+    if (odds.home > 0 && odds.draw > 0 && odds.away > 0) completeness += 30;
+    if (matchData.bookmakers && matchData.bookmakers.length > 3) completeness += 20;
+    if (manualData && manualData.homeGoals > 0) completeness += 15;
+    if (manualData && manualData.h2h) completeness += 15;
+    if (manualData && manualData.events) completeness += 10;
+    completeness = Math.min(completeness, 100);
+    
+    // 市场模型方向
+    const marketDir = prob.home > prob.away ? (prob.home > prob.draw ? '主胜' : '平局') : (prob.away > prob.draw ? '客胜' : '平局');
+    const marketScore = Math.max(prob.home, prob.draw, prob.away);
+    
+    // === 第二层：进球模型 ===
+    let homeXG = 1.4, awayXG = 1.2;
+    if (manualData && manualData.homeGoals > 0) {
+        const hAttack = manualData.homeGoals / 1.35;
+        const hDefense = manualData.homeConceded / 1.35;
+        const aAttack = manualData.awayGoals / 1.35;
+        const aDefense = manualData.awayConceded / 1.35;
+        const xg = calcExpectedGoals(hAttack, hDefense, aAttack, aDefense, modelParams.home_advantage, modelParams.league_avg_goals);
+        homeXG = xg.home;
+        awayXG = xg.away;
+    }
+    
+    // 比分矩阵
+    const maxGoals = 6;
+    const matrix = calcScoreMatrix(homeXG, awayXG, maxGoals);
+    
+    // 大小球
+    const overUnder25 = calcOverUnder(matrix, 2.5);
+    const overUnder35 = calcOverUnder(matrix, 3.5);
+    
+    // 双方进球
+    const bothScore = calcBothScore(matrix);
+    
+    // 最可能比分
+    const sortedMatrix = matrix.sort((a, b) => b.prob - a.prob);
+    const topScores = sortedMatrix.slice(0, 5);
+    
+    // 进球模型方向
+    const totalXG = homeXG + awayXG;
+    const goalsDir = totalXG >= 2.8 ? '大球倾向' : (totalXG >= 2.0 ? '2-3球' : '小球倾向');
+    
+    // === 综合输出 ===
+    // 融合胜平负：市场模型50% + 泊松模型50%
+    const poissonProbs = calcProb(1/homeXG, 1/(homeXG+awayXG), 1/awayXG);
+    // 简化融合
+    const fusedProb = {
+        home: marketProb.home * 0.5 + poissonProbs.home * 0.5,
+        draw: marketProb.draw * 0.5 + poissonProbs.draw * 0.5,
+        away: marketProb.away * 0.5 + poissonProbs.away * 0.5
+    };
+    
+    // 归一化
+    const sum = fusedProb.home + fusedProb.draw + fusedProb.away;
+    if (sum > 0) {
+        fusedProb.home /= sum;
+        fusedProb.draw /= sum;
+        fusedProb.away /= sum;
+    }
+    
+    // 首选/次选
+    const sorted = Object.entries(fusedProb).sort((a, b) => b[1] - a[1]);
+    const first = sorted[0];
+    const second = sorted[1];
+    const directionMap = { home: '主胜', draw: '平局', away: '客胜' };
+    const primary = directionMap[first[0]] || '主胜';
+    const secondary = directionMap[second[0]] || '平局';
+    
+    // ABC等级
+    let grade = 'C';
+    if (first[1] >= 0.45) grade = 'A';
+    else if (first[1] >= 0.35) grade = 'B';
+    else grade = 'C';
+    
+    // 信心评分
+    const confidence = first[1];
+    
+    // 盘口冲突检测
+    const euroAsia = checkEuroAsia(odds.home, 0.5); // 简化亚盘
+    
+    return {
+        market: { prob: marketProb, direction: marketDir, score: marketScore, dispersion: dispersion, completeness: completeness },
+        goals: { homeXG, awayXG, totalXG, over25: overUnder25.over, under25: overUnder25.under, bothScore: bothScore.both, topScores, direction: goalsDir },
+        fused: { prob: fusedProb, primary, secondary, grade, confidence },
+        euroAsia: euroAsia,
+        timestamp: new Date().toISOString()
+    };
+}
+
+// ===================================================================
+// 5. 数据获取与渲染
+// ===================================================================
+async function fetchData() {
+    const el = document.getElementById('matchList');
+    el.innerHTML = '<div class="loading">⏳ 获取数据...</div>';
+    try {
+        const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${API_KEY}&regions=eu&markets=h2h&dateFormat=iso`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('API请求失败');
+        const data = await resp.json();
+        allMatches = data.filter(m => m.bookmakers && m.bookmakers.length);
+        renderMatches();
+        updateTrackCount();
+    } catch(e) {
+        el.innerHTML = `<div class="empty">❌ 加载失败：${e.message}</div>`;
+    }
+}
+
+function renderMatches() {
+    const el = document.getElementById('matchList');
+    const filterText = document.getElementById('filterLeague').value.toLowerCase();
+    
+    let list = allMatches;
+    if (filterText) {
+        list = list.filter(m => 
+            m.sport_title?.toLowerCase().includes(filterText) || 
+            m.home_team?.toLowerCase().includes(filterText) || 
+            m.away_team?.toLowerCase().includes(filterText)
+        );
+    }
+    
+    if (list.length === 0) {
+        el.innerHTML = '<div class="empty">📭 暂无匹配比赛</div>';
+        return;
+    }
+    
+    let html = '';
+    for (const m of list) {
+        // 取赔率
+        const bm = m.bookmakers.find(b => b.key === 'pinnacle') || m.bookmakers[0];
+        const mk = bm?.markets?.find(k => k.key === 'h2h');
+        if (!mk) continue;
+        const outcomes = mk.outcomes;
+        const home = outcomes.find(o => o.name === m.home_team);
+        const away = outcomes.find(o => o.name === m.away_team);
+        const draw = outcomes.find(o => o.name === 'Draw');
+        if (!home || !away) continue;
+        
+        const odds = { home: home.price, draw: draw ? draw.price : 0, away: away.price };
+        
+        // 检查追踪
+        const tracked = trackedBets.find(t => t.matchId === m.id);
+        const isTracked = !!tracked;
+        const result = tracked?.result || 'pending';
+        const resultText = result === 'win' ? '✅' : result === 'lose' ? '❌' : result === 'draw' ? '⚖️' : '⏳';
+        
+        // 预测
+        const manualData = tracked ? {
+            homeGoals: tracked.homeGoals || 1.6,
+            homeConceded: tracked.homeConceded || 1.2,
+            awayGoals: tracked.awayGoals || 1.4,
+            awayConceded: tracked.awayConceded || 1.3,
+            h2h: tracked.h2h || '2胜1平2负',
+            events: tracked.events || ''
+        } : null;
+        
+        const matchData = { home: m.home_team, away: m.away_team, odds: odds, bookmakers: m.bookmakers };
+        const pred = predictMatch(matchData, manualData);
+        
+        const time = new Date(m.commence_time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const gradeClass = pred.fused.grade === 'A' ? 'grade-A' : pred.fused.grade === 'B' ? 'grade-B' : 'grade-C';
+        
+        html += `
+        <div class="match-card" data-id="${m.id}">
+            <div class="top">
+                <span>${m.sport_title || '未知'}</span>
+                <span>${time}</span>
+                <span>${resultText}</span>
+            </div>
+            <div class="teams">${m.home_team} <span class="vs">vs</span> ${m.away_team}</div>
+            <div class="odds">
+                <span class="win">主 ${odds.home.toFixed(2)}</span>
+                ${odds.draw > 0 ? `<span class="draw">平 ${odds.draw.toFixed(2)}</span>` : ''}
+                <span class="lose">客 ${odds.away.toFixed(2)}</span>
+            </div>
+            
+            <div class="prediction-box">
+                <div class="row">
+                    <span class="label">第一层·市场模型</span>
+                    <span class="value">${pred.market.direction} (${(pred.market.score*100).toFixed(1)}%)</span>
+                    <span class="value" style="font-size:10px;color:#8899bb;">离散度 ${pred.market.dispersion.home.toFixed(1)}%</span>
+                </div>
+                <div class="row">
+                    <span class="label">第二层·进球模型</span>
+                    <span class="value blue">xG ${pred.goals.homeXG.toFixed(2)}-${pred.goals.awayXG.toFixed(2)}</span>
+                    <span class="value">${pred.goals.direction}</span>
+                </div>
+                <div class="row">
+                    <span class="label">综合输出</span>
+                    <span class="value gold">${pred.fused.primary}</span>
+                    <span class="value">次选 ${pred.fused.secondary}</span>
+                    <span class="${gradeClass}">${pred.fused.grade}</span>
+                </div>
+                <div class="row">
+                    <span class="label">参考比分</span>
+                    <span class="value">${pred.goals.topScores.slice(0,3).map(s => `${s.home}-${s.away}`).join(' / ')}</span>
+                </div>
+                <div class="row">
+                    <span class="label">大小球2.5</span>
+                    <span class="value">大 ${(pred.goals.over25*100).toFixed(0)}% / 小 ${(pred.goals.under25*100).toFixed(0)}%</span>
+                    <span class="label">双方进球</span>
+                    <span class="value">${(pred.goals.bothScore*100).toFixed(0)}%</span>
+                </div>
+                <div class="row" style="font-size:10px;color:#445566;">
+                    <span>数据完整度 ${pred.market.completeness}%</span>
+                    <span>欧亚: ${pred.euroAsia.signal}</span>
+                    ${pred.fused.confidence >= 0.45 ? '✅ 高置信' : '⚠️ 中低置信'}
+                </div>
+                <div class="progress-bar"><div class="fill" style="width:${pred.market.completeness}%;"></div></div>
+                ${manualData && manualData.events ? `<div class="row" style="font-size:10px;color:#64b5f6;">📌 ${manualData.events}</div>` : ''}
+            </div>
+            
+            <div class="actions">
+                <button class="track ${isTracked?'active':''}" onclick="toggleTrack('${m.id}')">
+                    ${isTracked ? '📌 取消' : '📌 追踪'}
+                </button>
+                <button onclick="openManualData('${m.id}')">📝 数据</button>
+                <button onclick="openResultModal('${m.id}')">📊 复盘</button>
+                ${isTracked ? `<button onclick="viewBet('${m.id}')" style="background:#2a4a7a;">📋 详情</button>` : ''}
+            </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+    updateStats();
+}
+
+// ===================================================================
+// 6. 追踪与投注管理
+// ===================================================================
+function toggleTrack(matchId) {
+    const match = allMatches.find(m => m.id === matchId);
+    if (!match) return;
+    const existing = trackedBets.find(t => t.matchId === matchId);
+    if (existing) {
+        trackedBets = trackedBets.filter(t => t.matchId !== matchId);
+    } else {
+        // 默认参数
+        trackedBets.push({
+            matchId: match.id,
+            home: match.home_team,
+            away: match.away_team,
+            league: match.sport_title || '未知',
+            time: match.commence_time,
+            addedAt: new Date().toISOString(),
+            homeGoals: 1.6,
+            homeConceded: 1.2,
+            awayGoals: 1.4,
+            awayConceded: 1.3,
+            h2h: '2胜1平2负',
+            events: '',
+            direction: '待定',
+            amount: 0,
+            odds: 0,
+            result: 'pending',
+            profit: 0,
+            prediction: null
+        });
+    }
+    saveData();
+    renderMatches();
+    updateTrackCount();
+}
+
+function updateTrackCount() {
+    document.getElementById('trackCount').textContent = trackedBets.length;
+    document.getElementById('trackCountBadge').textContent = trackedBets.length;
+    renderTrackList();
+}
+
+function renderTrackList() {
+    const el = document.getElementById('trackList');
+    if (trackedBets.length === 0) {
+        el.innerHTML = '<div class="empty">📭 暂无追踪比赛</div>';
+        return;
+    }
+    let html = '';
+    for (const t of trackedBets) {
+        const resultText = t.result === 'win' ? '✅ 中奖' : t.result === 'lose' ? '❌ 未中' : t.result === 'draw' ? '⚖️ 走水' : '⏳ 待结算';
+        const time = new Date(t.time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        const pred = t.prediction ? JSON.parse(t.prediction) : null;
+        html += `
+        <div class="match-card" style="border-left-color:${t.result === 'win' ? '#4caf50' : t.result === 'lose' ? '#f44336' : '#ffc107'};">
+            <div class="top"><span>${t.league}</span><span>${time}</span></div>
+            <div class="teams">${t.home} <span class="vs">vs</span> ${t.away}</div>
+            ${pred ? `<div class="prediction-box" style="font-size:12px;">
+                <div class="row"><span class="label">预测</span><span class="value gold">${pred.fused.primary}</span><span>${pred.fused.grade}</span></div>
+                <div class="row"><span class="label">比分参考</span><span>${pred.goals.topScores.slice(0,2).map(s => `${s.home}-${s.away}`).join(' / ')}</span></div>
+            </div>` : ''}
+            <div class="pred" style="background:#0a1628;border-radius:6px;padding:6px 10px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;">
+                <span>🎯 ${t.direction}</span>
+                <span>💰 ${t.amount}元 @ ${t.odds.toFixed(2)}</span>
+                <span>${resultText}</span>
+            </div>
+            <div class="actions">
+                <button onclick="removeTrack('${t.matchId}')" style="background:#3a1a1a;color:#f44336;">🗑️ 删除</button>
+                <button onclick="openResultModal('${t.matchId}')">📊 复盘</button>
+            </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
+
+function removeTrack(matchId) {
+    if (confirm('确定删除？')) {
+        trackedBets = trackedBets.filter(t => t.matchId !== matchId);
+        saveData();
+        renderTrackList();
+        updateTrackCount();
+        renderMatches();
+    }
+}
+
+function clearAllTrack() {
+    if (confirm('清空所有追踪？')) {
+        trackedBets = [];
+        saveData();
+        renderTrackList();
+        updateTrackCount();
+        renderMatches();
+    }
+}
+
+// ===================================================================
+// 7. 手动数据录入
+// ===================================================================
+function openManualData(matchId) {
+    const match = allMatches.find(m => m.id === matchId);
+    if (!match) return;
+    currentTrackMatch = match;
+    const existing = trackedBets.find(t => t.matchId === matchId);
+    document.getElementById('modalMatchInfo').textContent = `${match.home_team} vs ${match.away_team}`;
+    document.getElementById('fHomeGoals').value = existing?.homeGoals || 1.6;
+    document.getElementById('fHomeConceded').value = existing?.homeConceded || 1.2;
+    document.getElementById('fAwayGoals').value = existing?.awayGoals || 1.4;
+    document.getElementById('fAwayConceded').value = existing?.awayConceded || 1.3;
+    document.getElementById('fH2H').value = existing?.h2h || '2胜1平2负';
+    document.getElementById('fEvents').value = existing?.events || '';
+    document.getElementById('dataModal').classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('dataModal').classList.remove('show');
+}
+
+function saveManualData() {
+    const match = currentTrackMatch;
+    if (!match) return;
+    const data = {
+        homeGoals: parseFloat(document.getElementById('fHomeGoals').value) || 1.6,
+        homeConceded: parseFloat(document.getElementById('fHomeConceded').value) || 1.2,
+        awayGoals: parseFloat(document.getElementById('fAwayGoals').value) || 1.4,
+        awayConceded: parseFloat(document.getElementById('fAwayConceded').value) || 1.3,
+        h2h: document.getElementById('fH2H').value || '2胜1平2负',
+        events: document.getElementById('fEvents').value || ''
+    };
+    const existing = trackedBets.find(t => t.matchId === match.id);
+    if (existing) {
+        Object.assign(existing, data);
+        // 重新生成预测
+        const matchData = { home: match.home_team, away: match.away_team, odds: getOddsForMatch(match), bookmakers: match.bookmakers };
+        const pred = predictMatch(matchData, data);
+        existing.prediction = JSON.stringify(pred);
+        existing.direction = pred.fused.primary;
+    } else {
+        // 自动添加追踪
+        trackedBets.push({
+            matchId: match.id,
+            home: match.home_team,
+            away: match.away_team,
+            league: match.sport_title || '未知',
+            time: match.commence_time,
+            addedAt: new Date().toISOString(),
+            ...data,
+            direction: '待定',
+            amount: 0,
+            odds: 0,
+            result: 'pending',
+            profit: 0,
+            prediction: null
+        });
+    }
+    saveData();
+    closeModal();
+    renderMatches();
+    updateTrackCount();
+}
+
+function getOddsForMatch(match) {
+    const bm = match.bookmakers.find(b => b.key === 'pinnacle') || match.bookmakers[0];
+    const mk = bm?.markets?.find(k => k.key === 'h2h');
+    if (!mk) return { home: 0, draw: 0, away: 0 };
+    const outcomes = mk.outcomes;
+    const home = outcomes.find(o => o.name === match.home_team);
+    const away = outcomes.find(o => o.name === match.away_team);
+    const draw = outcomes.find(o => o.name === 'Draw');
+    return { home: home?.price || 0, draw: draw?.price || 0, away: away?.price || 0 };
+}
+
+// ===================================================================
+// 8. 复盘功能
+// ===================================================================
+function openResultModal(matchId) {
+    const match = allMatches.find(m => m.id === matchId);
+    if (!match) return;
+    currentResultMatchId = matchId;
+    document.getElementById('resultMatchInfo').textContent = `${match.home_team} vs ${match.away_team}`;
+    document.getElementById('actualResult').value = 'home';
+    document.getElementById('actualScore').value = '1-0';
+    document.getElementById('resultModal').classList.add('show');
+}
+
+function closeResultModal() {
+    document.getElementById('resultModal').classList.remove('show');
+}
+
+function saveResult() {
+    const matchId = currentResultMatchId;
+    const match = allMatches.find(m => m.id === matchId);
+    if (!match) return;
+    const result = document.getElementById('actualResult').value;
+    const score = document.getElementById('actualScore').value;
+    const existing = trackedBets.find(t => t.matchId === matchId);
+    if (existing) {
+        existing.result = result;
+        existing.actualScore = score;
+        // 计算盈亏（简化）
+        if (existing.direction === '主胜' && result === 'home') existing.profit = existing.amount * (existing.odds - 1);
+        else if (existing.direction === '客胜' && result === 'away') existing.profit = existing.amount * (existing.odds - 1);
+        else if (existing.direction === '平局' && result === 'draw') existing.profit = existing.amount * (existing.odds - 1);
+        else if (result === 'draw') existing.profit = 0;
+        else existing.profit = -existing.amount;
+        // 更新学习统计
+        modelParams.total_predictions += 1;
+        if ((existing.direction === '主胜' && result === 'home') ||
+            (existing.direction === '客胜' && result === 'away') ||
+            (existing.direction === '平局' && result === 'draw')) {
+            modelParams.total_hits += 1;
+        }
+        // 自我学习：调整权重
+        adaptWeights(existing);
+        saveData();
+    }
+    closeResultModal();
+    renderMatches();
+    updateTrackCount();
+    updateStats();
+    renderLearnPanel();
+}
+
+// ===================================================================
+// 9. 自我学习引擎
+// ===================================================================
+function adaptWeights(record) {
+    // 简单自适应：如果预测正确，增加该维度权重；如果错误，降低
+    const isCorrect = (record.direction === '主胜' && record.result === 'home') ||
+                      (record.direction === '客胜' && record.result === 'away') ||
+                      (record.direction === '平局' && record.result === 'draw');
+    const lr = modelParams.learning_rate || 0.02;
+    if (isCorrect) {
+        // 正确时略微增加市场模型权重
+        modelParams.weight_market = Math.min(modelParams.weight_market + lr * 0.5, 0.50);
+        modelParams.weight_poisson = Math.min(modelParams.weight_poisson + lr * 0.3, 0.30);
+    } else {
+        // 错误时略微降低
+        modelParams.weight_market = Math.max(modelParams.weight_market - lr * 0.3, 0.15);
+        modelParams.weight_poisson = Math.max(modelParams.weight_poisson - lr * 0.2, 0.10);
+    }
+}
+
+// ===================================================================
+// 10. 统计与学习面板
+// ===================================================================
+function updateStats() {
+    const total = trackedBets.length;
+    const settled = trackedBets.filter(t => t.result !== 'pending');
+    const wins = trackedBets.filter(t => t.result === 'win');
+    const losses = trackedBets.filter(t => t.result === 'lose');
+    const totalAmount = trackedBets.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const totalReturn = trackedBets.reduce((sum, t) => sum + ((t.profit || 0) + (t.amount || 0)), 0);
+    const totalProfit = trackedBets.reduce((sum, t) => sum + (t.profit || 0), 0);
+    const hitRate = settled.length > 0 ? Math.round((wins.length / settled.length) * 100) : 0;
+    
+    document.getElementById('sTotal').textContent = total;
+    document.getElementById('sHit').textContent = wins.length;
+    document.getElementById('sMiss').textContent = losses.length;
+    document.getElementById('sRate').textContent = hitRate + '%';
+    document.getElementById('pTotal').textContent = totalAmount.toFixed(0);
+    document.getElementById('pReturn').textContent = totalReturn.toFixed(0);
+    document.getElementById('pProfit').textContent = totalProfit.toFixed(0);
+    document.getElementById('pProfit').style.color = totalProfit >= 0 ? '#4caf50' : '#f44336';
+    document.getElementById('pRate').textContent = hitRate + '%';
+    
+    // 投注明细
+    const betList = document.getElementById('betList');
+    if (trackedBets.length === 0) {
+        betList.innerHTML = '<div class="empty">暂无投注</div>';
+        return;
+    }
+    let html = '';
+    for (const t of trackedBets) {
+        const resultText = t.result === 'win' ? '✅' : t.result === 'lose' ? '❌' : t.result === 'draw' ? '⚖️' : '⏳';
+        const time = new Date(t.time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        html += `
+        <div style="display:flex;justify-content:space-between;padding:6px 10px;background:#111d33;border-radius:6px;margin-bottom:4px;font-size:12px;align-items:center;flex-wrap:wrap;gap:4px;">
+            <span style="font-weight:600;font-size:11px;">${t.home} vs ${t.away}</span>
+            <span style="color:#8899bb;font-size:10px;">${time}</span>
+            <span>${t.direction} ${t.amount}元@${t.odds.toFixed(2)}</span>
+            <span style="color:${(t.profit||0) >= 0 ? '#4caf50' : '#f44336'};">${(t.profit||0) >= 0 ? '+' : ''}${(t.profit||0).toFixed(0)}</span>
+            <span>${resultText}</span>
+        </div>`;
+    }
+    betList.innerHTML = html;
+}
+
+function renderLearnPanel() {
+    const el = document.getElementById('learnPanel');
+    const total = modelParams.total_predictions || 0;
+    const hits = modelParams.total_hits || 0;
+    const rate = total > 0 ? Math.round((hits / total) * 100) : 0;
+    el.innerHTML = `
+        <div class="stats-grid" style="grid-template-columns:1fr 1fr;">
+            <div class="stat-card"><div class="num">${total}</div><div class="label">总预测</div></div>
+            <div class="stat-card"><div class="num green">${hits}</div><div class="label">命中</div></div>
+            <div class="stat-card"><div class="num blue">${rate}%</div><div class="label">命中率</div></div>
+            <div class="stat-card"><div class="num">${modelParams.learning_rate || 0.02}</div><div class="label">学习率</div></div>
+        </div>
+        <div style="background:#111d33;border-radius:8px;padding:12px;margin-top:8px;">
+            <div style="font-size:12px;color:#8899bb;">🧠 模型权重（实时自适应）</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;font-size:12px;">
+                <span>市场模型 ${(modelParams.weight_market*100).toFixed(0)}%</span>
+                <span>泊松模型 ${(modelParams.weight_poisson*100).toFixed(0)}%</span>
+                <span>近况 ${(modelParams.weight_form*100).toFixed(0)}%</span>
+                <span>历史交锋 ${(modelParams.weight_h2h*100).toFixed(0)}%</span>
+                <span>伤停 ${(modelParams.weight_injury*100).toFixed(0)}%</span>
+                <span>赔率变化 ${(modelParams.weight_odds_velocity*100).toFixed(0)}%</span>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:#445566;">
+                💡 每次复盘后自动调整权重 · 正确时强化市场模型 · 错误时修正
+            </div>
+        </div>
+        <div style="background:#0a1628;border-radius:8px;padding:12px;margin-top:8px;font-size:12px;color:#8899bb;max-height:200px;overflow-y:auto;">
+            <div style="color:#ffd700;">📋 最近5次预测复盘</div>
+            ${trackedBets.filter(t => t.result !== 'pending').slice(-5).reverse().map(t => {
+                const correct = (t.direction === '主胜' && t.result === 'home') ||
+                               (t.direction === '客胜' && t.result === 'away') ||
+                               (t.direction === '平局' && t.result === 'draw');
+                return `<div style="padding:3px 0;border-bottom:1px solid #1a2744;display:flex;justify-content:space-between;">
+                    <span>${t.home} vs ${t.away}</span>
+                    <span style="color:${correct ? '#4caf50' : '#f44336'};">${correct ? '✅ 正确' : '❌ 偏差'}</span>
+                    <span style="color:#8899bb;font-size:10px;">${t.direction} → ${t.result}</span>
+                </div>`;
+            }).join('')}
+            ${trackedBets.filter(t => t.result !== 'pending').length === 0 ? '<div style="padding:8px;text-align:center;color:#445566;">暂无复盘数据</div>' : ''}
+        </div>
+    `;
+}
+
+// ===================================================================
+// 11. 查看投注详情
+// ===================================================================
+function viewBet(matchId) {
+    const t = trackedBets.find(b => b.matchId === matchId);
+    if (!t) return;
+    alert(`📋 投注详情\n\n${t.home} vs ${t.away}\n方向：${t.direction}\n投入：${t.amount}元 @ ${t.odds.toFixed(2)}\n状态：${t.result}\n盈亏：${(t.profit||0) >= 0 ? '+' : ''}${(t.profit||0).toFixed(0)}元`);
+}
+
+// ===================================================================
+// 12. 标签页切换
+// ===================================================================
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        const page = this.dataset.tab;
+        document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+        const target = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
+        if (target) target.style.display = 'block';
+        if (page === 'stats') updateStats();
+        if (page === 'track') renderTrackList();
+        if (page === 'results') renderResults();
+        if (page === 'learn') renderLearnPanel();
+        document.getElementById('statsSummary').style.display = (page === 'matches' || page === 'track') ? 'grid' : 'none';
+    });
+});
+
+function renderResults() {
+    const el = document.getElementById('resultsList');
+    const finished = trackedBets.filter(t => t.result !== 'pending');
+    if (finished.length === 0) {
+        el.innerHTML = '<div class="empty">📭 暂无完赛记录</div>';
+        return;
+    }
+    let html = '';
+    for (const t of finished) {
+        const correct = (t.direction === '主胜' && t.result === 'home') ||
+                       (t.direction === '客胜' && t.result === 'away') ||
+                       (t.direction === '平局' && t.result === 'draw');
+        const time = new Date(t.time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        html += `
+        <div class="match-card" style="border-left-color:${correct ? '#4caf50' : '#f44336'};">
+            <div class="top"><span>${t.league}</span><span>${time}</span></div>
+            <div class="teams">${t.home} <span class="vs">vs</span> ${t.away}</div>
+            <div class="pred" style="background:#0a1628;border-radius:6px;padding:6px 10px;font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;">
+                <span>🎯 预测: ${t.direction}</span>
+                <span>📊 实际: ${t.result}</span>
+                <span style="color:${correct ? '#4caf50' : '#f44336'};">${correct ? '✅ 命中' : '❌ 未中'}</span>
+                ${t.actualScore ? `<span>比分: ${t.actualScore}</span>` : ''}
+            </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
+
+// ===================================================================
+// 13. 初始化
+// ===================================================================
+loadData();
+fetchData();
+setInterval(fetchData, 300000);
+updateTrackCount();
+
+// 暴露全局函数
+window.toggleTrack = toggleTrack;
+window.openManualData = openManualData;
+window.closeModal = closeModal;
+window.saveManualData = saveManualData;
+window.openResultModal = openResultModal;
+window.closeResultModal = closeResultModal;
+window.saveResult = saveResult;
+window.viewBet = viewBet;
+window.removeTrack = removeTrack;
+window.clearAllTrack = clearAllTrack;
+window.fetchData = fetchData;
+window.renderMatches = renderMatches;
+</script>
+</body>
+</html>
