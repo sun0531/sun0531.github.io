@@ -2,200 +2,580 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚽ 竞彩预测 - API版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>⚽ 竞彩投注管理系统</title>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;}
-        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e17;color:#e8edf5;padding:16px;min-height:100vh;}
-        .header{display:flex;justify-content:space-between;align-items:center;padding:12px 0 20px;border-bottom:1px solid #1a2744;}
-        .header h1{font-size:20px;background:linear-gradient(135deg,#f7931e,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
-        .badge{font-size:10px;color:#8899bb;background:#111d33;padding:4px 12px;border-radius:20px;}
-        .stats{display:flex;justify-content:space-between;align-items:center;padding:12px 0;font-size:13px;color:#8899bb;flex-wrap:wrap;gap:6px;}
-        .refresh-btn{background:#1a2744;border:none;color:#e8edf5;padding:6px 16px;border-radius:20px;font-size:13px;cursor:pointer;}
-        .refresh-btn:active{background:#2a3a5a;}
-        .match-card{background:#111d33;border-radius:12px;padding:16px;margin-bottom:12px;border-left:3px solid #2a4a7a;}
-        .match-card .top{display:flex;justify-content:space-between;font-size:12px;color:#8899bb;margin-bottom:8px;flex-wrap:wrap;}
-        .match-card .teams{font-size:16px;font-weight:600;margin-bottom:8px;}
-        .match-card .teams .vs{color:#8899bb;margin:0 6px;}
-        .match-card .odds{display:flex;gap:16px;font-size:14px;margin-bottom:10px;flex-wrap:wrap;}
+        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0a0e17;color:#e8edf5;padding:12px;min-height:100vh;}
+        
+        /* 顶部导航 */
+        .header{display:flex;justify-content:space-between;align-items:center;padding:10px 0 16px;border-bottom:1px solid #1a2744;flex-wrap:wrap;gap:8px;}
+        .header h1{font-size:18px;background:linear-gradient(135deg,#f7931e,#ffd700);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+        .badge{font-size:10px;color:#8899bb;background:#111d33;padding:4px 10px;border-radius:20px;}
+        
+        /* 标签页切换 */
+        .tabs{display:flex;gap:4px;padding:12px 0;overflow-x:auto;}
+        .tab{flex:1;min-width:60px;padding:8px 12px;text-align:center;background:#111d33;border-radius:8px;font-size:13px;color:#8899bb;cursor:pointer;border:none;transition:all 0.2s;}
+        .tab.active{background:#1a2744;color:#f7931e;font-weight:600;}
+        
+        /* 统计卡片 */
+        .stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin:8px 0 12px;}
+        .stat-card{background:#111d33;border-radius:8px;padding:10px;text-align:center;}
+        .stat-card .num{font-size:18px;font-weight:700;color:#f7931e;}
+        .stat-card .label{font-size:10px;color:#8899bb;margin-top:2px;}
+        .stat-card .num.green{color:#4caf50;}
+        .stat-card .num.red{color:#f44336;}
+        
+        /* 比赛卡片 */
+        .match-card{background:#111d33;border-radius:10px;padding:12px;margin-bottom:10px;border-left:3px solid #2a4a7a;}
+        .match-card .top{display:flex;justify-content:space-between;font-size:11px;color:#8899bb;flex-wrap:wrap;gap:4px;}
+        .match-card .teams{font-size:15px;font-weight:600;margin:4px 0;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+        .match-card .teams .vs{color:#8899bb;font-weight:400;}
+        .match-card .odds{display:flex;gap:12px;font-size:13px;margin:6px 0;flex-wrap:wrap;}
         .match-card .odds .win{color:#4caf50;}
         .match-card .odds .draw{color:#ffc107;}
         .match-card .odds .lose{color:#f44336;}
-        .match-card .prediction{background:#0a1628;border-radius:8px;padding:10px 14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;}
-        .match-card .prediction .dir{font-size:15px;font-weight:600;}
-        .match-card .prediction .conf{color:#ffd700;}
-        .match-card .prediction .goals{color:#64b5f6;}
-        .match-card .prob-bar{display:flex;height:4px;border-radius:2px;overflow:hidden;margin-top:8px;background:#1a2744;}
-        .match-card .prob-bar .b-home{background:#4caf50;}
-        .match-card .prob-bar .b-draw{background:#ffc107;}
-        .match-card .prob-bar .b-away{background:#f44336;}
-        .loading,.error,.empty{text-align:center;padding:40px 0;color:#8899bb;}
-        .error{color:#f44336;}
-        .footer{text-align:center;padding:20px 0 10px;font-size:12px;color:#445566;}
-        .debug{background:#1a1a2e;padding:10px;border-radius:6px;font-size:11px;color:#667799;margin-top:10px;word-break:break-all;max-height:200px;overflow:auto;}
+        .match-card .pred{background:#0a1628;border-radius:6px;padding:6px 10px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px;font-size:13px;margin:4px 0;}
+        .match-card .pred .conf{color:#ffd700;}
+        .match-card .pred .goals{color:#64b5f6;}
+        .match-card .actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+        .match-card .actions button{background:#1a2744;border:none;color:#e8edf5;padding:4px 12px;border-radius:16px;font-size:12px;cursor:pointer;}
+        .match-card .actions button.track{background:#2a4a3a;color:#4caf50;}
+        .match-card .actions button.track.active{background:#4a2a2a;color:#f44336;}
+        .match-card .result-tag{font-size:11px;padding:2px 10px;border-radius:12px;}
+        .match-card .result-tag.win{background:#1a3a2a;color:#4caf50;}
+        .match-card .result-tag.lose{background:#3a1a1a;color:#f44336;}
+        .match-card .result-tag.draw{background:#3a3a1a;color:#ffc107;}
+        
+        /* 筛选器 */
+        .filters{display:flex;gap:8px;padding:8px 0;flex-wrap:wrap;}
+        .filters input,.filters select{background:#111d33;border:1px solid #1a2744;color:#e8edf5;padding:6px 12px;border-radius:16px;font-size:12px;flex:1;min-width:80px;}
+        .filters input::placeholder{color:#445566;}
+        
+        /* 投注弹窗 */
+        .modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:1000;padding:20px;justify-content:center;align-items:center;}
+        .modal.show{display:flex;}
+        .modal-content{background:#111d33;border-radius:12px;padding:20px;max-width:400px;width:100%;max-height:80vh;overflow-y:auto;}
+        .modal-content h3{margin-bottom:12px;color:#f7931e;}
+        .modal-content label{font-size:13px;color:#8899bb;display:block;margin:8px 0 4px;}
+        .modal-content input,.modal-content select{width:100%;padding:8px;border-radius:6px;border:1px solid #1a2744;background:#0a1628;color:#e8edf5;font-size:14px;}
+        .modal-content .btn-group{display:flex;gap:10px;margin-top:16px;}
+        .modal-content .btn-group button{flex:1;padding:10px;border:none;border-radius:6px;font-size:14px;cursor:pointer;}
+        .modal-content .btn-group .btn-confirm{background:#f7931e;color:#0a0e17;font-weight:600;}
+        .modal-content .btn-group .btn-cancel{background:#1a2744;color:#8899bb;}
+        
+        .loading,.empty{text-align:center;padding:30px 0;color:#8899bb;}
+        .footer{text-align:center;padding:16px 0 8px;font-size:11px;color:#445566;}
+        
+        /* 清除按钮 */
+        .clear-btn{background:#3a1a1a;border:none;color:#f44336;padding:4px 12px;border-radius:16px;font-size:11px;cursor:pointer;}
     </style>
 </head>
 <body>
-    <div class="header"><h1>⚽ 竞彩预测</h1><span class="badge">The Odds API</span></div>
-    <div class="stats"><span>📊 比赛 <strong id="cnt">-</strong></span><span id="time">加载中...</span><button class="refresh-btn" onclick="fetchData()">🔄 刷新</button></div>
-    <div id="list"><div class="loading">⏳ 正在加载数据...</div></div>
-    <div id="debug" class="debug">⏳ 初始化...</div>
-    <div class="footer">数据来源：The Odds API · 仅供研究参考</div>
 
-    <script>
-        // ========== 🔑 API Key ==========
-        const API_KEY = 'f74ecb2f05a3b0263522a21119a9635a';
-        // =================================
+<div class="header">
+    <h1>⚽ 投注管家</h1>
+    <span class="badge">v2.0</span>
+</div>
 
-        async function fetchData() {
-            const listEl = document.getElementById('list');
-            const cntEl = document.getElementById('cnt');
-            const timeEl = document.getElementById('time');
-            const debugEl = document.getElementById('debug');
+<div class="tabs">
+    <button class="tab active" data-tab="matches">📋 赛事</button>
+    <button class="tab" data-tab="track">📌 追踪 (0)</button>
+    <button class="tab" data-tab="results">📊 赛果</button>
+    <button class="tab" data-tab="stats">💰 盈利</button>
+</div>
 
-            listEl.innerHTML = '<div class="loading">⏳ 正在获取数据...</div>';
-            cntEl.textContent = '-';
-            timeEl.textContent = '请求中...';
-            debugEl.textContent = '⏳ 正在请求 API...';
+<!-- 统计摘要（显示在赛事页顶部） -->
+<div id="statsSummary" class="stats-grid" style="display:none;">
+    <div class="stat-card"><div class="num" id="sTotal">0</div><div class="label">总场次</div></div>
+    <div class="stat-card"><div class="num green" id="sHit">0</div><div class="label">命中</div></div>
+    <div class="stat-card"><div class="num red" id="sMiss">0</div><div class="label">未中</div></div>
+    <div class="stat-card"><div class="num" id="sRate">0%</div><div class="label">命中率</div></div>
+</div>
 
-            try {
-                const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${API_KEY}&regions=eu&markets=h2h&dateFormat=iso`;
-                debugEl.textContent = `📡 请求: ${url}`;
+<!-- 赛事页 -->
+<div id="pageMatches" class="page">
+    <div class="filters">
+        <input type="text" id="filterLeague" placeholder="🔍 联赛筛选" oninput="renderMatches()">
+        <select id="filterStatus" onchange="renderMatches()">
+            <option value="all">全部状态</option>
+            <option value="scheduled">未开始</option>
+            <option value="live">进行中</option>
+            <option value="finished">已完赛</option>
+        </select>
+        <button class="refresh-btn" onclick="fetchData()" style="background:#1a2744;border:none;color:#e8edf5;padding:6px 16px;border-radius:20px;font-size:12px;cursor:pointer;">🔄 刷新</button>
+    </div>
+    <div id="matchList"><div class="loading">⏳ 加载中...</div></div>
+</div>
 
-                const resp = await fetch(url);
-                debugEl.textContent += `\n✅ 状态: ${resp.status}`;
+<!-- 追踪页 -->
+<div id="pageTrack" class="page" style="display:none;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;">
+        <span style="color:#8899bb;font-size:13px;">📌 正在追踪 <strong id="trackCount">0</strong> 场比赛</span>
+        <button class="clear-btn" onclick="clearAllTrack()">清空全部</button>
+    </div>
+    <div id="trackList"><div class="empty">📭 暂未追踪任何比赛<br>在赛事页点击「📌 追踪」添加</div></div>
+</div>
 
-                if (!resp.ok) {
-                    const errText = await resp.text();
-                    debugEl.textContent += `\n❌ 错误: ${errText}`;
-                    throw new Error(`HTTP ${resp.status}`);
-                }
+<!-- 赛果页 -->
+<div id="pageResults" class="page" style="display:none;">
+    <div id="resultsList"><div class="empty">📭 暂无完赛记录</div></div>
+</div>
 
-                const data = await resp.json();
-                debugEl.textContent += `\n✅ 获取 ${data.length} 场比赛`;
+<!-- 盈利页 -->
+<div id="pageStats" class="page" style="display:none;">
+    <div class="stats-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="stat-card"><div class="num" id="pTotal">0</div><div class="label">总投入</div></div>
+        <div class="stat-card"><div class="num green" id="pReturn">0</div><div class="label">总回报</div></div>
+        <div class="stat-card"><div class="num" id="pProfit">0</div><div class="label">净盈亏</div></div>
+        <div class="stat-card"><div class="num" id="pRate">0%</div><div class="label">命中率</div></div>
+    </div>
+    <div style="margin-top:12px;">
+        <h4 style="color:#8899bb;font-size:14px;margin-bottom:8px;">📋 投注明细</h4>
+        <div id="betList"><div class="empty">暂无投注记录</div></div>
+    </div>
+</div>
 
-                // 过滤有赔率的比赛
-                const matches = data.filter(m => m.bookmakers && m.bookmakers.length > 0);
+<div class="footer">数据来源：The Odds API · 本地存储 · 仅供研究</div>
 
-                if (matches.length === 0) {
-                    listEl.innerHTML = '<div class="empty">📭 今日暂无赔率数据</div>';
-                    cntEl.textContent = '0';
-                    timeEl.textContent = new Date().toLocaleTimeString();
-                    return;
-                }
+<!-- 投注弹窗 -->
+<div class="modal" id="betModal">
+    <div class="modal-content">
+        <h3>📝 添加投注</h3>
+        <div id="betMatchInfo" style="font-size:14px;margin-bottom:8px;color:#8899bb;"></div>
+        <label>投注方向</label>
+        <select id="betDirection">
+            <option value="主胜">主胜</option>
+            <option value="平局">平局</option>
+            <option value="客胜">客胜</option>
+        </select>
+        <label>投入金额 (元)</label>
+        <input type="number" id="betAmount" value="100" min="1">
+        <label>赔率</label>
+        <input type="number" id="betOdds" step="0.01" min="1.01" value="2.00">
+        <label>实际结果</label>
+        <select id="betResult">
+            <option value="pending">未结算</option>
+            <option value="win">✅ 中奖</option>
+            <option value="lose">❌ 未中</option>
+            <option value="draw">⚖️ 走水</option>
+        </select>
+        <div class="btn-group">
+            <button class="btn-cancel" onclick="closeModal()">取消</button>
+            <button class="btn-confirm" onclick="saveBet()">💾 保存</button>
+        </div>
+    </div>
+</div>
 
-                cntEl.textContent = matches.length;
-                timeEl.textContent = new Date().toLocaleTimeString();
+<script>
+// ========== 配置 ==========
+const API_KEY = 'f74ecb2f05a3b0263522a21119a9635a';
+let allMatches = [];
+let trackedBets = [];
+let currentTrackMatch = null;
 
-                let html = '';
-                let idx = 0;
-                for (const m of matches) {
-                    idx++;
-                    // 取赔率最好的公司（Pinnacle优先）
-                    let bookmaker = m.bookmakers.find(b => b.key === 'pinnacle') || m.bookmakers[0];
-                    const market = bookmaker.markets.find(mk => mk.key === 'h2h');
-                    if (!market) continue;
+// ========== 数据存储 ==========
+function loadData() {
+    try {
+        const data = localStorage.getItem('football_bets');
+        if (data) trackedBets = JSON.parse(data);
+    } catch(e) { trackedBets = []; }
+}
+function saveData() {
+    try {
+        localStorage.setItem('football_bets', JSON.stringify(trackedBets));
+    } catch(e) {}
+}
 
-                    const outcomes = market.outcomes;
-                    const homeOdds = outcomes.find(o => o.name === m.home_team);
-                    const awayOdds = outcomes.find(o => o.name === m.away_team);
-                    const drawOdds = outcomes.find(o => o.name === 'Draw');
+// ========== 获取赛事数据 ==========
+async function fetchData() {
+    const el = document.getElementById('matchList');
+    el.innerHTML = '<div class="loading">⏳ 获取数据...</div>';
+    try {
+        const url = `https://api.the-odds-api.com/v4/sports/soccer/odds/?apiKey=${API_KEY}&regions=eu&markets=h2h&dateFormat=iso`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('API请求失败');
+        const data = await resp.json();
+        allMatches = data.filter(m => m.bookmakers && m.bookmakers.length);
+        renderMatches();
+        updateTrackCount();
+        checkFinishedMatches();
+    } catch(e) {
+        el.innerHTML = `<div class="empty">❌ 加载失败：${e.message}</div>`;
+    }
+}
 
-                    if (!homeOdds || !awayOdds) continue;
+// ========== 渲染赛事列表 ==========
+function renderMatches() {
+    const el = document.getElementById('matchList');
+    const leagueFilter = document.getElementById('filterLeague').value.toLowerCase();
+    const statusFilter = document.getElementById('filterStatus').value;
+    
+    let list = allMatches;
+    if (leagueFilter) {
+        list = list.filter(m => m.sport_title?.toLowerCase().includes(leagueFilter) || 
+            m.home_team?.toLowerCase().includes(leagueFilter) || 
+            m.away_team?.toLowerCase().includes(leagueFilter));
+    }
+    
+    if (list.length === 0) {
+        el.innerHTML = '<div class="empty">📭 暂无匹配的比赛</div>';
+        return;
+    }
+    
+    let html = '';
+    let idx = 0;
+    for (const m of list) {
+        idx++;
+        const bm = m.bookmakers.find(b => b.key === 'pinnacle') || m.bookmakers[0];
+        const mk = bm?.markets?.find(k => k.key === 'h2h');
+        if (!mk) continue;
+        const outcomes = mk.outcomes;
+        const home = outcomes.find(o => o.name === m.home_team);
+        const away = outcomes.find(o => o.name === m.away_team);
+        const draw = outcomes.find(o => o.name === 'Draw');
+        if (!home || !away) continue;
+        
+        const h = home.price, a = away.price, d = draw ? draw.price : 0;
+        const prob = calcProb(h,d,a);
+        const dir = getDirection(prob);
+        const conf = getConfidence(prob);
+        const time = new Date(m.commence_time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        
+        // 检查是否已追踪
+        const tracked = trackedBets.find(t => t.matchId === m.id);
+        const isTracked = !!tracked;
+        const result = tracked?.result || 'pending';
+        const resultText = result === 'win' ? '✅ 中奖' : result === 'lose' ? '❌ 未中' : result === 'draw' ? '⚖️ 走水' : '⏳ 待结算';
+        const resultClass = result === 'win' ? 'win' : result === 'lose' ? 'lose' : result === 'draw' ? 'draw' : '';
+        
+        html += `
+        <div class="match-card" data-id="${m.id}">
+            <div class="top">
+                <span>${m.sport_title || '未知联赛'}</span>
+                <span>${time}</span>
+                ${result !== 'pending' ? `<span class="result-tag ${resultClass}">${resultText}</span>` : ''}
+            </div>
+            <div class="teams">${m.home_team} <span class="vs">vs</span> ${m.away_team}</div>
+            <div class="odds">
+                <span class="win">主 ${h.toFixed(2)}</span>
+                ${d > 0 ? `<span class="draw">平 ${d.toFixed(2)}</span>` : ''}
+                <span class="lose">客 ${a.toFixed(2)}</span>
+                <span style="font-size:10px;color:#445566;margin-left:auto;">${bm.title||'赔率'}</span>
+            </div>
+            <div class="pred">
+                <span>🎯 ${dir}</span>
+                <span class="conf">${conf}</span>
+                <span class="goals">⚽ 2-3球</span>
+                ${isTracked ? `<span style="font-size:11px;color:#4caf50;">📌 已追踪</span>` : ''}
+            </div>
+            <div class="actions">
+                <button class="track ${isTracked?'active':''}" onclick="toggleTrack('${m.id}')">
+                    ${isTracked ? '📌 取消追踪' : '📌 追踪'}
+                </button>
+                <button onclick="openBet('${m.id}')">💰 投注</button>
+                ${isTracked ? `<button onclick="viewBet('${m.id}')" style="background:#2a4a7a;">📋 查看</button>` : ''}
+            </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+    updateTrackCount();
+}
 
-                    const h = homeOdds.price;
-                    const d = drawOdds ? drawOdds.price : 0;
-                    const a = awayOdds.price;
+// ========== 概率计算 ==========
+function calcProb(h,d,a) {
+    if (h<=0||a<=0) return {home:0,draw:0,away:0};
+    const ih=1/h, id=d>0?1/d:0, ia=1/a;
+    const over=ih+id+ia;
+    if(over===0) return {home:0,draw:0,away:0};
+    const vig=1/over;
+    return {home:Math.round(ih*vig*1000)/1000, draw:Math.round(id*vig*1000)/1000, away:Math.round(ia*vig*1000)/1000};
+}
+function getDirection(prob) {
+    if(prob.home>prob.away&&prob.home>prob.draw) return `主胜 ${(prob.home*100).toFixed(1)}%`;
+    if(prob.away>prob.home&&prob.away>prob.draw) return `客胜 ${(prob.away*100).toFixed(1)}%`;
+    return `平局 ${(prob.draw*100).toFixed(1)}%`;
+}
+function getConfidence(prob) {
+    const m=Math.max(prob.home,prob.draw,prob.away);
+    if(m>=0.45) return '★★★★★';
+    if(m>=0.38) return '★★★★☆';
+    if(m>=0.32) return '★★★☆☆';
+    if(m>=0.28) return '★★☆☆☆';
+    return '★☆☆☆☆';
+}
 
-                    // 去水概率
-                    const prob = calcProb(h, d, a);
-                    const direction = getDirection(prob);
-                    const confidence = getConfidence(prob);
+// ========== 追踪管理 ==========
+function toggleTrack(matchId) {
+    const match = allMatches.find(m => m.id === matchId);
+    if (!match) return;
+    const existing = trackedBets.find(t => t.matchId === matchId);
+    if (existing) {
+        trackedBets = trackedBets.filter(t => t.matchId !== matchId);
+    } else {
+        trackedBets.push({
+            matchId: match.id,
+            home: match.home_team,
+            away: match.away_team,
+            league: match.sport_title || '未知',
+            time: match.commence_time,
+            addedAt: new Date().toISOString(),
+            direction: '待定',
+            amount: 0,
+            odds: 0,
+            result: 'pending',
+            profit: 0
+        });
+    }
+    saveData();
+    renderMatches();
+    updateTrackCount();
+}
 
-                    // 时间格式化
-                    const matchTime = new Date(m.commence_time);
-                    const timeStr = matchTime.toLocaleString('zh-CN', {
-                        month: '2-digit', day: '2-digit',
-                        hour: '2-digit', minute: '2-digit'
-                    });
+function updateTrackCount() {
+    document.querySelector('[data-tab="track"]').textContent = `📌 追踪 (${trackedBets.length})`;
+    document.getElementById('trackCount').textContent = trackedBets.length;
+    renderTrackList();
+}
 
-                    const leagueName = m.sport_title || '未知联赛';
-                    const bookmakerName = bookmaker.title || '未知';
+function renderTrackList() {
+    const el = document.getElementById('trackList');
+    if (trackedBets.length === 0) {
+        el.innerHTML = '<div class="empty">📭 暂未追踪任何比赛<br>在赛事页点击「📌 追踪」添加</div>';
+        return;
+    }
+    let html = '';
+    for (const t of trackedBets) {
+        const resultText = t.result === 'win' ? '✅ 中奖' : t.result === 'lose' ? '❌ 未中' : t.result === 'draw' ? '⚖️ 走水' : '⏳ 待结算';
+        const resultClass = t.result === 'win' ? 'win' : t.result === 'lose' ? 'lose' : t.result === 'draw' ? 'draw' : '';
+        const time = new Date(t.time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        html += `
+        <div class="match-card" style="border-left-color:${t.result === 'win' ? '#4caf50' : t.result === 'lose' ? '#f44336' : '#ffc107'};">
+            <div class="top"><span>${t.league}</span><span>${time}</span></div>
+            <div class="teams">${t.home} <span class="vs">vs</span> ${t.away}</div>
+            <div class="pred">
+                <span>🎯 ${t.direction}</span>
+                <span>💰 ${t.amount}元 @ ${t.odds.toFixed(2)}</span>
+                <span class="${resultClass}">${resultText}</span>
+            </div>
+            <div class="actions">
+                <button onclick="viewBetDetail('${t.matchId}')">📋 详情</button>
+                <button onclick="removeTrack('${t.matchId}')" style="background:#3a1a1a;color:#f44336;">🗑️ 删除</button>
+            </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
 
-                    html += `
-                    <div class="match-card">
-                        <div class="top">
-                            <span>${leagueName}</span>
-                            <span>${timeStr}</span>
-                        </div>
-                        <div class="teams">
-                            ${m.home_team} <span class="vs">vs</span> ${m.away_team}
-                        </div>
-                        <div class="odds">
-                            <span class="win">主 ${h.toFixed(2)}</span>
-                            ${d > 0 ? `<span class="draw">平 ${d.toFixed(2)}</span>` : ''}
-                            <span class="lose">客 ${a.toFixed(2)}</span>
-                            <span style="font-size:11px;color:#445566;margin-left:auto;">${bookmakerName}</span>
-                        </div>
-                        <div class="prediction">
-                            <span class="dir">🎯 ${direction}</span>
-                            <span class="conf">${confidence}</span>
-                            <span class="goals">⚽ 2-3球</span>
-                        </div>
-                        <div class="prob-bar">
-                            <div class="b-home" style="width:${(prob.home*100).toFixed(1)}%;"></div>
-                            ${d > 0 ? `<div class="b-draw" style="width:${(prob.draw*100).toFixed(1)}%;"></div>` : ''}
-                            <div class="b-away" style="width:${(prob.away*100).toFixed(1)}%;"></div>
-                        </div>
-                    </div>
-                    `;
-                }
+function removeTrack(matchId) {
+    if (confirm('确定删除此追踪记录？')) {
+        trackedBets = trackedBets.filter(t => t.matchId !== matchId);
+        saveData();
+        renderTrackList();
+        updateTrackCount();
+        renderMatches();
+    }
+}
 
-                listEl.innerHTML = html;
-                debugEl.textContent += `\n✅ 渲染完成，共 ${idx} 场`;
+function clearAllTrack() {
+    if (confirm('确定清空所有追踪记录？')) {
+        trackedBets = [];
+        saveData();
+        renderTrackList();
+        updateTrackCount();
+        renderMatches();
+    }
+}
 
-            } catch (err) {
-                listEl.innerHTML = `<div class="error">❌ 加载失败：${err.message}</div>`;
-                timeEl.textContent = '错误';
-                debugEl.textContent += `\n❌ 异常: ${err.message}`;
+// ========== 投注管理 ==========
+function openBet(matchId) {
+    const match = allMatches.find(m => m.id === matchId);
+    if (!match) return;
+    currentTrackMatch = match;
+    document.getElementById('betMatchInfo').textContent = `${match.home_team} vs ${match.away_team}`;
+    document.getElementById('betDirection').value = getDirection(calcProb(
+        match.bookmakers[0]?.markets[0]?.outcomes.find(o=>o.name===match.home_team)?.price || 2,
+        match.bookmakers[0]?.markets[0]?.outcomes.find(o=>o.name==='Draw')?.price || 3.3,
+        match.bookmakers[0]?.markets[0]?.outcomes.find(o=>o.name===match.away_team)?.price || 2
+    )).split(' ')[0] || '主胜';
+    document.getElementById('betAmount').value = 100;
+    document.getElementById('betOdds').value = match.bookmakers[0]?.markets[0]?.outcomes.find(o=>o.name===match.home_team)?.price || 2.0;
+    document.getElementById('betResult').value = 'pending';
+    document.getElementById('betModal').classList.add('show');
+}
+
+function closeModal() {
+    document.getElementById('betModal').classList.remove('show');
+}
+
+function saveBet() {
+    const match = currentTrackMatch;
+    if (!match) return;
+    const direction = document.getElementById('betDirection').value;
+    const amount = parseFloat(document.getElementById('betAmount').value) || 0;
+    const odds = parseFloat(document.getElementById('betOdds').value) || 1;
+    const result = document.getElementById('betResult').value;
+    const profit = result === 'win' ? amount * (odds - 1) : result === 'draw' ? 0 : -amount;
+    
+    const existing = trackedBets.find(t => t.matchId === match.id);
+    if (existing) {
+        existing.direction = direction;
+        existing.amount = amount;
+        existing.odds = odds;
+        existing.result = result;
+        existing.profit = profit;
+    } else {
+        trackedBets.push({
+            matchId: match.id,
+            home: match.home_team,
+            away: match.away_team,
+            league: match.sport_title || '未知',
+            time: match.commence_time,
+            addedAt: new Date().toISOString(),
+            direction: direction,
+            amount: amount,
+            odds: odds,
+            result: result,
+            profit: profit
+        });
+    }
+    saveData();
+    closeModal();
+    renderMatches();
+    updateTrackCount();
+    updateStats();
+}
+
+function viewBet(matchId) {
+    const t = trackedBets.find(b => b.matchId === matchId);
+    if (!t) return;
+    alert(`📋 投注详情\n\n${t.home} vs ${t.away}\n方向：${t.direction}\n投入：${t.amount}元 @ ${t.odds.toFixed(2)}\n状态：${t.result}\n盈亏：${t.profit > 0 ? '+'+t.profit : t.profit}元`);
+}
+
+function viewBetDetail(matchId) {
+    viewBet(matchId);
+}
+
+// ========== 赛果检查 ==========
+function checkFinishedMatches() {
+    const now = new Date();
+    for (const t of trackedBets) {
+        if (t.result === 'pending') {
+            const matchTime = new Date(t.time);
+            if (now > new Date(matchTime.getTime() + 2*60*60*1000)) {
+                // 比赛已过2小时，标记为待手动结算
+                // 用户可手动在投注弹窗中更新结果
             }
         }
+    }
+}
 
-        function calcProb(h, d, a) {
-            if (h <= 0 || a <= 0) return { home: 0, draw: 0, away: 0 };
-            const ih = 1/h, id_ = d > 0 ? 1/d : 0, ia = 1/a;
-            const over = ih + id_ + ia;
-            if (over === 0) return { home: 0, draw: 0, away: 0 };
-            const vig = 1 / over;
-            return {
-                home: Math.round(ih * vig * 1000) / 1000,
-                draw: Math.round(id_ * vig * 1000) / 1000,
-                away: Math.round(ia * vig * 1000) / 1000
-            };
-        }
+// ========== 盈利统计 ==========
+function updateStats() {
+    const total = trackedBets.length;
+    const settled = trackedBets.filter(t => t.result !== 'pending');
+    const wins = trackedBets.filter(t => t.result === 'win');
+    const losses = trackedBets.filter(t => t.result === 'lose');
+    const draws = trackedBets.filter(t => t.result === 'draw');
+    const totalAmount = trackedBets.reduce((sum, t) => sum + t.amount, 0);
+    const totalReturn = trackedBets.reduce((sum, t) => sum + (t.result === 'win' ? t.amount * t.odds : t.result === 'draw' ? t.amount : 0), 0);
+    const totalProfit = trackedBets.reduce((sum, t) => sum + t.profit, 0);
+    const hitRate = settled.length > 0 ? Math.round((wins.length / settled.length) * 100) : 0;
+    
+    document.getElementById('sTotal').textContent = total;
+    document.getElementById('sHit').textContent = wins.length;
+    document.getElementById('sMiss').textContent = losses.length + draws.length;
+    document.getElementById('sRate').textContent = hitRate + '%';
+    document.getElementById('pTotal').textContent = totalAmount.toFixed(0);
+    document.getElementById('pReturn').textContent = totalReturn.toFixed(0);
+    document.getElementById('pProfit').textContent = totalProfit.toFixed(0);
+    document.getElementById('pProfit').style.color = totalProfit >= 0 ? '#4caf50' : '#f44336';
+    document.getElementById('pRate').textContent = hitRate + '%';
+    
+    // 投注明细
+    const betList = document.getElementById('betList');
+    if (trackedBets.length === 0) {
+        betList.innerHTML = '<div class="empty">暂无投注记录</div>';
+        return;
+    }
+    let html = '';
+    for (const t of trackedBets) {
+        const resultText = t.result === 'win' ? '✅' : t.result === 'lose' ? '❌' : t.result === 'draw' ? '⚖️' : '⏳';
+        const time = new Date(t.time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        html += `
+        <div style="display:flex;justify-content:space-between;padding:8px 12px;background:#111d33;border-radius:6px;margin-bottom:4px;font-size:13px;align-items:center;flex-wrap:wrap;gap:4px;">
+            <span style="font-weight:600;">${t.home} vs ${t.away}</span>
+            <span style="color:#8899bb;font-size:11px;">${time}</span>
+            <span>${t.direction} ${t.amount}元@${t.odds.toFixed(2)}</span>
+            <span style="color:${t.profit >= 0 ? '#4caf50' : '#f44336'};">${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(0)}元</span>
+            <span>${resultText}</span>
+        </div>`;
+    }
+    betList.innerHTML = html;
+}
 
-        function getDirection(prob) {
-            if (prob.home > prob.away && prob.home > prob.draw) {
-                return `主胜 (${(prob.home*100).toFixed(1)}%)`;
-            }
-            if (prob.away > prob.home && prob.away > prob.draw) {
-                return `客胜 (${(prob.away*100).toFixed(1)}%)`;
-            }
-            return `平局 (${(prob.draw*100).toFixed(1)}%)`;
-        }
+// ========== 标签页切换 ==========
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        const page = this.dataset.tab;
+        document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+        const target = document.getElementById('page' + page.charAt(0).toUpperCase() + page.slice(1));
+        if (target) target.style.display = 'block';
+        if (page === 'stats') updateStats();
+        if (page === 'track') renderTrackList();
+        if (page === 'results') renderResults();
+        // 显示统计摘要
+        document.getElementById('statsSummary').style.display = (page === 'matches' || page === 'track') ? 'grid' : 'none';
+    });
+});
 
-        function getConfidence(prob) {
-            const m = Math.max(prob.home, prob.draw, prob.away);
-            if (m >= 0.45) return '★★★★★';
-            if (m >= 0.38) return '★★★★☆';
-            if (m >= 0.32) return '★★★☆☆';
-            if (m >= 0.28) return '★★☆☆☆';
-            return '★☆☆☆☆';
-        }
+// ========== 赛果页 ==========
+function renderResults() {
+    const el = document.getElementById('resultsList');
+    const finished = trackedBets.filter(t => t.result !== 'pending');
+    if (finished.length === 0) {
+        el.innerHTML = '<div class="empty">📭 暂无完赛记录</div>';
+        return;
+    }
+    let html = '';
+    for (const t of finished) {
+        const resultText = t.result === 'win' ? '✅ 中奖' : t.result === 'lose' ? '❌ 未中' : '⚖️ 走水';
+        const profitText = t.profit >= 0 ? `+${t.profit.toFixed(0)}元` : `${t.profit.toFixed(0)}元`;
+        const time = new Date(t.time).toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+        html += `
+        <div class="match-card" style="border-left-color:${t.result === 'win' ? '#4caf50' : '#f44336'};">
+            <div class="top"><span>${t.league}</span><span>${time}</span></div>
+            <div class="teams">${t.home} <span class="vs">vs</span> ${t.away}</div>
+            <div class="pred">
+                <span>🎯 ${t.direction}</span>
+                <span>💰 ${t.amount}元 @ ${t.odds.toFixed(2)}</span>
+                <span style="color:${t.profit >= 0 ? '#4caf50' : '#f44336'};">${profitText}</span>
+                <span>${resultText}</span>
+            </div>
+        </div>`;
+    }
+    el.innerHTML = html;
+}
 
-        // 首次加载
-        fetchData();
-        setInterval(fetchData, 300000);
-    </script>
+// ========== 初始化 ==========
+loadData();
+fetchData();
+setInterval(fetchData, 300000); // 每5分钟自动刷新
+updateTrackCount();
+
+// 注册全局函数
+window.toggleTrack = toggleTrack;
+window.openBet = openBet;
+window.viewBet = viewBet;
+window.viewBetDetail = viewBetDetail;
+window.removeTrack = removeTrack;
+window.clearAllTrack = clearAllTrack;
+window.closeModal = closeModal;
+window.saveBet = saveBet;
+window.fetchData = fetchData;
+window.renderMatches = renderMatches;
+</script>
 </body>
 </html>
